@@ -393,96 +393,122 @@ FEATURE_DIC = {
 }
 
 
-# --- 2. 自动化分析逻辑 ---
-def get_sentiment_analysis(text_series, category_dict):
-    """
-    遍历评论，识别亮点和痛点频次
-    """
-    analysis_results = []
-    # 预处理文本：转小写，去除空值
-    reviews = text_series.dropna().astype(str).lower()
-    total_reviews = len(reviews)
+你的代码主要存在两个问题：
 
-    for category, sub_tags in category_dict.items():
-        highlights_count = 0
-        pain_points_count = 0
-        
-        # 遍历子标签（如 '正面-色彩丰富'）
-        for tag, keywords in sub_tags.items():
-            # 简单逻辑：包含“正面”则计入 Highlight，包含“负面”计入 Pain Point
-            count = 0
-            for word in keywords:
-                # 使用正则确保匹配的准确性
-                count += reviews.str.contains(re.escape(word.lower()), regex=True).sum()
-            
-            if "正面" in tag:
-                highlights_count += count
-            elif "负面" in tag:
-                pain_points_count += count
-                
-        analysis_results.append({
-            "维度": category,
-            "Highlights": highlights_count,
-            "Pain Points": pain_points_count,
-            "提及总数": highlights_count + pain_points_count
-        })
-    
-    return pd.DataFrame(analysis_results)
+逻辑断层：你定义了一个巨大的 FEATURE_DIC（词库），但代码后面直接跳到了 df = load_data()，中间缺失了数据加载函数 (load_raw_data) 的具体定义。
 
-# --- 3. Streamlit UI 逻辑 ---
-st.set_page_config(page_title="丙烯调研分析", layout="wide")
+代码截断：你提供的代码在最后一行 cap falls 处断开了，导致语法不完整（缺少闭合括号）。
 
+为了让你能直接运行，我为你整合了一个结构完整、逻辑严密的版本。它会自动识别你的词库，并将“正面”计为亮点，“负面”计为痛点。
+
+🚀 修复后的完整代码
+Python
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import os
+import re
+
+# --- 1. 核心词库配置 (已整合你提供的部分) ---
+FEATURE_DIC = {
+    '颜色种类': {
+        '正面-色彩丰富': ['many colors', 'lot of colors', 'plenty of colors', 'great variety'],
+        '负面-色彩单调': ['limited range', 'not enough colors', 'missing colors'],
+        '中性-提及数量': ['color range', 'number of colors']
+    },
+    '笔头表现': {
+        '正面-软头好用': ['love the brush tip', 'smooth application', 'flexible'],
+        '负面-软头差劲': ['brush tip frays', 'brush tip split', 'clogged'],
+        '中性-提及笔头': ['brush tip', 'fine tip', 'dual tip']
+    },
+    '流畅性': {
+        '正面-书写流畅': ['writes smoothly', 'buttery smooth', 'glides'],
+        '负面-断墨刮纸': ['scratchy', 'skips', 'dried out', 'leaking'],
+    }
+    # ... 你可以继续把剩下的 FEATURE_DIC 内容贴在这里，记得闭合花括号 ...
+}
+
+# --- 2. 数据加载函数 (修复 Missing load_raw_data 错误) ---
 @st.cache_data
-def load_data():
-    # ... 此处保留你原本的 load_raw_data() 代码逻辑 ...
-    # 为了演示，假设已经加载成功
-    return load_raw_data() # 调用你原本定义的加载函数
-
-df = load_data()
-
-st.title("🎨 丙烯马克笔四大板块深度分析")
-selected_main = st.sidebar.radio("选择调研产品线：", ["儿童丙烯", "大容量丙烯"])
-filtered_df = df[df['main_category'] == selected_main]
-
-if not filtered_df.empty:
-    # 定义分析面板
-    def show_analysis_panel(sub_df, title):
-        st.subheader(title)
-        # 执行关键词分析 (针对 'review_content' 列)
-        # 请确保你的 Excel 中存储评论的列名正确
-        review_col = 'review_content' # 映射后的统一列名
-        results_df = get_sentiment_analysis(sub_df[review_col], RAW_FEATURE_DIC)
-        
-        # 4. 可视化图表
-        fig = px.bar(
-            results_df, 
-            x="维度", 
-            y=["Highlights", "Pain Points"],
-            barmode='group',
-            color_discrete_map={"Highlights": "#2ecc71", "Pain Points": "#e74c3c"},
-            title=f"{title} 维度分布"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-        # 5. 亮点/痛点自动挖掘摘要
-        top_h = results_df.sort_values("Highlights", ascending=False).iloc[0]
-        top_p = results_df.sort_values("Pain Points", ascending=False).iloc[0]
-        
-        c1, c2 = st.columns(2)
-        with c1:
-            st.success(f"✅ **最强亮点**: {top_h['维度']} (提及 {top_h['Highlights']} 次)")
-        with c2:
-            st.error(f"❌ **核心痛点**: {top_p['维度']} (提及 {top_p['Pain Points']} 次)")
-
-    # 布局：左边销量，右边趋势
-    col_sales, col_trend = st.columns(2)
+def load_raw_data():
+    """
+    加载本地 Excel 文件并打上标签
+    """
+    data_map = {
+        "kids_sales.xlsx": ("儿童丙烯", "🔥 高销量 (Top 10)"),
+        "kids_trending.xlsx": ("儿童丙烯", "📈 高增长趋势"),
+        "large_capacity_sales.xlsx": ("大容量丙烯", "🔥 高销量 (Top 10)"),
+        "large_capacity_trending.xlsx": ("大容量丙烯", "📈 高增长趋势")
+    }
     
-    with col_sales:
-        sales_sub = filtered_df[filtered_df['sub_type'].str.contains("销量")]
-        show_analysis_panel(sales_sub, "🔥 销量 Top 10 分析")
+    combined = []
+    for filename, info in data_map.items():
+        if os.path.exists(filename):
+            df_temp = pd.read_excel(filename)
+            df_temp['main_category'] = info[0]
+            df_temp['sub_type'] = info[1]
+            # 自动识别评论列（通常是第一列或包含 Review 的列）
+            col_name = 'Review Body' if 'Review Body' in df_temp.columns else df_temp.columns[0]
+            df_temp['review_content'] = df_temp[col_name].astype(str).str.lower()
+            combined.append(df_temp)
+    
+    return pd.concat(combined, ignore_index=True) if combined else pd.DataFrame()
+
+# --- 3. 核心分析逻辑 (匹配词库) ---
+def analyze_sentiments(df_sub):
+    results = []
+    for category, sub_dict in FEATURE_DIC.items():
+        pos_score = 0
+        neg_score = 0
+        for tag, keywords in sub_dict.items():
+            pattern = '|'.join([re.escape(k) for k in keywords])
+            count = df_sub['review_content'].str.contains(pattern, na=False).sum()
+            if '正面' in tag:
+                pos_score += count
+            elif '负面' in tag:
+                neg_score += count
         
-    with col_right:
-        trend_sub = filtered_df[filtered_df['sub_type'].str.contains("趋势")]
-        show_analysis_panel(trend_sub, "📈 增长趋势分析")
+        results.append({
+            "维度": category,
+            "亮点 (Highlights)": pos_score,
+            "痛点 (Pain Points)": neg_score
+        })
+    return pd.DataFrame(results)
+
+# --- 4. Streamlit 页面布局 ---
+st.set_page_config(page_title="丙烯笔深度调研", layout="wide")
+st.title("🎨 丙烯马克笔词库深度挖掘面板")
+
+df = load_raw_data()
+
+if not df.empty:
+    # 侧边栏筛选
+    target = st.sidebar.radio("选择分析对象", df['main_category'].unique())
+    filtered = df[df['main_category'] == target]
+    
+    col1, col2 = st.columns(2)
+    
+    # 分别分析“高销量”和“高增长”
+    for i, sub_name in enumerate(filtered['sub_type'].unique()):
+        with (col1 if i == 0 else col2):
+            st.subheader(sub_name)
+            sub_df = filtered[filtered['sub_type'] == sub_name]
+            
+            analysis_res = analyze_sentiments(sub_df)
+            
+            # 绘制对比图
+            fig = px.bar(
+                analysis_res, 
+                x="维度", 
+                y=["亮点 (Highlights)", "痛点 (Pain Points)"],
+                barmode="group",
+                color_discrete_map={"亮点 (Highlights)": "#2ecc71", "痛点 (Pain Points)": "#e74c3c"}
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # 显示最突出的痛点
+            top_pain = analysis_res.sort_values("痛点 (Pain Points)", ascending=False).iloc[0]
+            st.error(f"⚠️ 核心痛点提醒：**{top_pain['维度']}** (提及 {top_pain['痛点 (Pain Points)']} 次)")
+
 else:
-    st.warning("请上传数据文件。")
+    st.info("💡 请确保根目录下有对应的 .xlsx 文件（如 kids_sales.xlsx）")
