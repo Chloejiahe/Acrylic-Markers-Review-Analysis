@@ -5,7 +5,6 @@ import os
 import re
 
 # --- 1. 核心词库配置 (Feature Keywords) ---
-# 这里只放两个示例，你可以把你之前整理的 8 大板块全部填进去
 FEATURE_DIC = {
      '颜色种类': {
             '正面-色彩丰富': ['many colors', 'lot of colors', 'plenty of colors', 'good range', 'great variety', 'great selection', 'every color', 'all the colors', 'so many options'],
@@ -390,42 +389,6 @@ FEATURE_DIC = {
             '中性-提及运输': ['shipping', 'delivery', 'arrival condition', 'transit', 'shipped', 'arrived',  'damage','damaged', 'broken', 'crushed', 'leaking', 'shipping box', 'protective packaging'],
             '中性-提及客服/售后': ['customer service', 'contacted seller', 'contacted support', 'seller response','replacement', 'refund', 'return process', 'exchange', 'missing items', 'wrong item sent', 'issue resolved'],
         }
-}
-
-
-你的代码主要存在两个问题：
-
-逻辑断层：你定义了一个巨大的 FEATURE_DIC（词库），但代码后面直接跳到了 df = load_data()，中间缺失了数据加载函数 (load_raw_data) 的具体定义。
-
-代码截断：你提供的代码在最后一行 cap falls 处断开了，导致语法不完整（缺少闭合括号）。
-
-为了让你能直接运行，我为你整合了一个结构完整、逻辑严密的版本。它会自动识别你的词库，并将“正面”计为亮点，“负面”计为痛点。
-
-🚀 修复后的完整代码
-Python
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-import os
-import re
-
-# --- 1. 核心词库配置 (已整合你提供的部分) ---
-FEATURE_DIC = {
-    '颜色种类': {
-        '正面-色彩丰富': ['many colors', 'lot of colors', 'plenty of colors', 'great variety'],
-        '负面-色彩单调': ['limited range', 'not enough colors', 'missing colors'],
-        '中性-提及数量': ['color range', 'number of colors']
-    },
-    '笔头表现': {
-        '正面-软头好用': ['love the brush tip', 'smooth application', 'flexible'],
-        '负面-软头差劲': ['brush tip frays', 'brush tip split', 'clogged'],
-        '中性-提及笔头': ['brush tip', 'fine tip', 'dual tip']
-    },
-    '流畅性': {
-        '正面-书写流畅': ['writes smoothly', 'buttery smooth', 'glides'],
-        '负面-断墨刮纸': ['scratchy', 'skips', 'dried out', 'leaking'],
-    }
-    # ... 你可以继续把剩下的 FEATURE_DIC 内容贴在这里，记得闭合花括号 ...
 }
 
 # --- 2. 数据加载函数 (修复 Missing load_raw_data 错误) ---
