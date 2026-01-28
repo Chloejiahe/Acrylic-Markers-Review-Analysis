@@ -309,9 +309,9 @@ FEATURE_DIC = {
 @st.cache_data
 def load_raw_data():
     data_map = {
-        "kids_sales.xlsx": ("儿童丙烯", "🔥 高销量 (Top 10)"),
+        "kids_sales.xlsx": ("儿童丙烯", "🔥 高销量"),
         "kids_trending.xlsx": ("儿童丙烯", "📈 高增长趋势"),
-        "large_capacity_sales.xlsx": ("大容量丙烯", "🔥 高销量 (Top 10)"),
+        "large_capacity_sales.xlsx": ("大容量丙烯", "🔥 高销量"),
         "large_capacity_trending.xlsx": ("大容量丙烯", "📈 高增长趋势")
     }
     
@@ -377,7 +377,7 @@ def analyze_sentiments(df_sub):
 
 # --- 4. Streamlit 页面布局 ---
 st.set_page_config(page_title="丙烯笔深度调研", layout="wide")
-st.title("🎨 丙烯马克笔消费者洞察深挖看板")
+st.title("🎨 丙烯马克笔消费者洞察看板")
 
 df = load_raw_data()
 
@@ -389,7 +389,7 @@ if not df.empty:
 
     # 遍历子类型，采用垂直流布局
     for sub_name in sub_types:
-        st.markdown(f"### 🚀 {sub_name} 深度洞察")
+        st.markdown(f"### {sub_name} 深度洞察")
         sub_df = filtered[filtered['sub_type'] == sub_name]
         analysis_res = analyze_sentiments(sub_df)
         
