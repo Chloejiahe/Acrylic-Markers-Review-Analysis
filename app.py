@@ -338,20 +338,28 @@ def load_raw_data():
 # --- 3. 核心分析逻辑 ---
 def analyze_sentiments(df_sub):
     results = []
+    # 获取全盘平均分，用于贝叶斯修正或对比
+    global_avg_rating = df_sub['Rating'].mean() if 'Rating' in df_sub.columns else 0
+    
     for category, sub_dict in FEATURE_DIC.items():
         pos_score, neg_score, neu_score = 0, 0, 0
-        hit_details = [] # 用于下钻分析：记录匹配到的具体标签
+        hit_details = []
+        matched_ratings = [] # 新增：存储该维度的评分
 
         for tag, keywords in sub_dict.items():
             if not keywords: continue
-            
-            # 正则优化：兼容弯引号
             safe_keywords = [re.escape(k).replace(r"\'", "['’]") for k in keywords]
             pattern = '|'.join(safe_keywords)
             
-            count = df_sub['review_content'].str.contains(pattern, na=False, flags=re.IGNORECASE).sum()
+            # 找到匹配的行
+            mask = df_sub['review_content'].str.contains(pattern, na=False, flags=re.IGNORECASE)
+            count = mask.sum()
             
             if count > 0:
+                # 收集评分数据
+                if 'Rating' in df_sub.columns:
+                    matched_ratings.extend(df_sub[mask]['Rating'].tolist())
+                
                 if '正面' in tag or '喜爱' in tag:
                     pos_score += count
                 elif '负面' in tag or '不满' in tag:
@@ -360,17 +368,24 @@ def analyze_sentiments(df_sub):
                 else:
                     neu_score += count
 
-        # --- Deep Analysis: 计算满意度 ---
+        # 计算维度平均分
+        dim_rating = round(sum(matched_ratings) / len(matched_ratings), 2) if matched_ratings else 0
+        
         total_vocal = pos_score + neg_score
-        # 满意度 = 亮点 / 总评价提及数
         sentiment_score = round(pos_score / total_vocal * 100, 1) if total_vocal > 0 else 0
+        
+        # --- 权威机会指数计算 (基于乘法效应) ---
+        # 公式：痛点数 * 不满意系数 * (5 - 维度评分)
+        # 这样评分越低、痛点越多的竞品维度，得分越高
+        opp_index = round(neg_score * (100 - sentiment_score) * (5.1 - dim_rating) / 100, 2)
         
         results.append({
             "维度": category,
             "亮点": pos_score,
             "痛点": neg_score,
-            "热度": neu_score,
             "满意度": sentiment_score,
+            "维度评分": dim_rating,
+            "机会指数": opp_index, # 这里的指数越高，越是竞品死穴
             "痛点分布": ", ".join(hit_details) if hit_details else "无"
         })
     return pd.DataFrame(results)
@@ -393,16 +408,18 @@ if not df.empty:
         sub_df = filtered[filtered['sub_type'] == sub_name]
         analysis_res = analyze_sentiments(sub_df)
         
-        # 顶部指标卡：一眼看清大盘
+        # 顶部指标卡
         m1, m2, m3, m4 = st.columns(4)
         total_pos = analysis_res["亮点"].sum()
         total_neg = analysis_res["痛点"].sum()
         health_rate = round(total_pos / (total_pos + total_neg) * 100) if (total_pos + total_neg) > 0 else 0
+        # 计算该子类的平均分
+        avg_star = round(sub_df['Rating'].mean(), 2) if 'Rating' in sub_df.columns else 0
         
         m1.metric("亮点总提及", total_pos)
         m2.metric("痛点总提及", total_neg, delta=f"-{total_neg}", delta_color="inverse")
         m3.metric("整体健康度", f"{health_rate}%")
-        m4.metric("样本量", len(sub_df))
+        m4.metric("平均星级评分", f"{avg_star} ⭐")
 
 # --- 优化后的中间图表部分：柱状图 + 满意度折线 ---
         import plotly.graph_objects as go
@@ -439,6 +456,22 @@ if not df.empty:
             ),
             secondary_y=True # 使用右侧 Y 轴
         )
+            
+        # 在 fig.add_trace(go.Scatter(...)) 之后添加
+        fig.add_trace(
+            go.Scatter(
+                name='维度评分 (1-5)', 
+                x=analysis_res['维度'], 
+                y=analysis_res['维度评分'],
+                mode='lines+markers',
+                line=dict(color='#f1c40f', width=2, dash='dot'),
+                marker=dict(symbol='star', size=10)
+            ),
+            secondary_y=True # 同样挂载在右轴，注意右轴范围建议设为 [0, 5] 或 [0, 100] 缩放
+        )
+        
+        # 修改右侧 Y 轴范围以兼容百分比和 5 分制（建议将评分乘以 20 映射到 100 分制）
+        fig.update_yaxes(title_text="满意度/评分映射 (%)", range=[0, 110], secondary_y=True)
 
         # 5. 图表样式配置
         fig.update_layout(
@@ -455,29 +488,32 @@ if not df.empty:
         st.plotly_chart(fig, use_container_width=True, key=f"chart_{sub_name}")
 
         # 6. 底部数据下钻：找出所有“及格线以下”的隐患
-        st.markdown("🔍 **痛点根因追踪 (Root Cause Analysis)**")
+        st.markdown("🔍 **竞品弱点靶向追踪 (Opportunity Analysis)**")
         
-        # 筛选：有痛点提及，且满意度低于 60% 的所有维度
-        pain_df = analysis_res[(analysis_res["痛点"] > 0) & (analysis_res["满意度"] < 60)].sort_values("满意度", ascending=True)
+        # 使用我们计算的“机会指数”进行排序，选出前 3 个最值得攻击的弱点
+        pain_df = analysis_res.sort_values("机会指数", ascending=False).head(3)
 
         if not pain_df.empty:
-            # 使用 container 配合 columns 实现每行显示 3 个，自动换行
-            rows = [pain_df.iloc[i:i+3] for i in range(0, len(pain_df), 3)]
-            
-            for row_data in rows:
-                cols = st.columns(3) # 固定一行 3 个
-                for idx, (_, row) in enumerate(row_data.iterrows()):
-                    with cols[idx]:
-                        # 满意度越低，颜色越红
-                        color = "red" if row['满意度'] < 40 else "orange"
-                        st.markdown(f"""
-                        <div style="padding:15px; border-radius:10px; border-left: 5px solid {color}; 
-                             background-color: #f9f9f9; margin-bottom: 10px; min-height: 180px;">
-                            <h4 style="margin:0">{row['维度']}</h4>
-                            <p style="color:gray; font-size:12px">满意度: {row['满意度']}%</p>
-                            <p style="font-size:14px">主要问题：<br/><b>{row['痛点分布']}</b></p>
+            cols = st.columns(3)
+            for idx, (_, row) in enumerate(pain_df.iterrows()):
+                with cols[idx]:
+                    # 颜色基于评分：评分越低越红
+                    color = "#c0392b" if row['维度评分'] < 3.5 else "#d35400"
+                    st.markdown(f"""
+                    <div style="padding:15px; border-radius:10px; border-left: 8px solid {color}; 
+                                 background-color: #fdfefe; border-top:1px solid #eee; border-right:1px solid #eee;
+                                 box-shadow: 2px 2px 8px rgba(0,0,0,0.05); min-height: 200px;">
+                        <div style="display:flex; justify-content:space-between;">
+                            <h4 style="margin:0;">{row['维度']}</h4>
+                            <span style="color:{color}; font-weight:bold;">得分: {row['维度评分']} ⭐</span>
                         </div>
-                        """, unsafe_allow_html=True)
+                        <p style="color:gray; font-size:11px; margin-bottom:10px;">
+                           机会指数: {row['机会指数']} (数值越高越建议切入)
+                        </p>
+                        <p style="font-size:14px;"><b>核心投诉根因：</b><br/>
+                        <span style="color:#2c3e50;">{row['痛点分布']}</span></p>
+                    </div>
+                    """, unsafe_allow_html=True)
         else:
             st.success("✨ 所有维度表现良好，满意度均在 60% 以上！")
 
