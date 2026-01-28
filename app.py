@@ -370,11 +370,11 @@ def analyze_sentiments(df_sub):
 st.set_page_config(page_title="丙烯笔深度调研", layout="wide")
 st.title("🎨 丙烯马克笔词库深度挖掘面板")
 
+df = load_raw_data()
+
 if not df.empty:
     with st.expander("🔍 原始数据采样 (前5行)"):
         st.write(df[['sub_type', 'review_content']].head())
-
-df = load_raw_data()
 
 if not df.empty:
     # 侧边栏筛选
