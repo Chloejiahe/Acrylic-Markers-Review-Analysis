@@ -404,21 +404,55 @@ if not df.empty:
         m3.metric("整体健康度", f"{health_rate}%")
         m4.metric("样本量", len(sub_df))
 
-        # 中间图表部分
-        # 增加高度，避免 X 轴文字拥挤
-        fig = px.bar(
-            analysis_res, 
-            x="维度", 
-            y=["亮点", "痛点"],
-            title=f"【{sub_name}】各维度情感倾向分布",
-            barmode="group",
-            text_auto='.2s',
-            height=500,
-            color_discrete_map={"亮点": "#2ecc71", "痛点": "#e74c3c"}
+# --- 优化后的中间图表部分：柱状图 + 满意度折线 ---
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+
+        # 1. 创建带双 Y 轴的图表
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+        # 2. 添加亮点柱状图
+        fig.add_trace(
+            go.Bar(name='亮点', x=analysis_res['维度'], y=analysis_res['亮点'], 
+                   marker_color='#2ecc71', text=analysis_res['亮点'], textposition='auto'),
+            secondary_y=False
         )
-        
-        # 增加满意度趋势线（辅助分析）
-        st.plotly_chart(fig, use_container_width=True)
+
+        # 3. 添加痛点柱状图
+        fig.add_trace(
+            go.Bar(name='痛点', x=analysis_res['维度'], y=analysis_res['痛点'], 
+                   marker_color='#e74c3c', text=analysis_res['痛点'], textposition='auto'),
+            secondary_y=False
+        )
+
+        # 4. 添加满意度折线图（显示具体分数）
+        fig.add_trace(
+            go.Scatter(
+                name='满意度 (%)', 
+                x=analysis_res['维度'], 
+                y=analysis_res['满意度'],
+                mode='lines+markers+text', # 线、点、文字同时显示
+                text=analysis_res['满意度'].apply(lambda x: f"{x}%"), # 格式化文字
+                textposition="top center", # 文字显示在点上方
+                line=dict(color='#3498db', width=3),
+                marker=dict(size=8)
+            ),
+            secondary_y=True # 使用右侧 Y 轴
+        )
+
+        # 5. 图表样式配置
+        fig.update_layout(
+            title=f"【{sub_name}】各维度情感倾向分布与满意度趋势",
+            barmode='group',
+            height=600,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+
+        # 设置左轴为提及次数，右轴为百分比
+        fig.update_yaxes(title_text="提及次数", secondary_y=False)
+        fig.update_yaxes(title_text="满意度分数 (%)", range=[0, 110], secondary_y=True)
+
+        st.plotly_chart(fig, use_container_width=True, key=f"chart_{sub_name}")
 
         # 底部数据下钻：找出真正的“隐患”
         st.markdown("🔍 **痛点根因追踪 (Root Cause Analysis)**")
