@@ -393,109 +393,96 @@ FEATURE_DIC = {
 }
 
 
-# --- 2. 文本分析引擎 ---
-def analyze_features(text_series):
+# --- 2. 自动化分析逻辑 ---
+def get_sentiment_analysis(text_series, category_dict):
     """
-    输入评论序列，返回各维度的 Highlight 和 Pain Point 频次
+    遍历评论，识别亮点和痛点频次
     """
-    results = []
-    text_data = text_series.dropna().astype(str).lower()
-    
-    for category, subtokens in FEATURE_DIC.items():
-        # 计算正面词频
-        pos_count = 0
-        for word in subtokens['Highlights']:
-            pos_count += text_data.str.contains(re.escape(word)).sum()
-            
-        # 计算负面词频
-        neg_count = 0
-        for word in subtokens['Pain Points']:
-            neg_count += text_data.str.contains(re.escape(word)).sum()
-            
-        results.append({
-            "维度": category,
-            "Highlight Count": pos_count,
-            "Pain Point Count": neg_count,
-            "Total Mentions": pos_count + neg_count
-        })
-    return pd.DataFrame(results)
+    analysis_results = []
+    # 预处理文本：转小写，去除空值
+    reviews = text_series.dropna().astype(str).lower()
+    total_reviews = len(reviews)
 
-# --- 3. 页面配置与数据加载 ---
-st.set_page_config(page_title="丙烯调研看板", layout="wide")
+    for category, sub_tags in category_dict.items():
+        highlights_count = 0
+        pain_points_count = 0
+        
+        # 遍历子标签（如 '正面-色彩丰富'）
+        for tag, keywords in sub_tags.items():
+            # 简单逻辑：包含“正面”则计入 Highlight，包含“负面”计入 Pain Point
+            count = 0
+            for word in keywords:
+                # 使用正则确保匹配的准确性
+                count += reviews.str.contains(re.escape(word.lower()), regex=True).sum()
+            
+            if "正面" in tag:
+                highlights_count += count
+            elif "负面" in tag:
+                pain_points_count += count
+                
+        analysis_results.append({
+            "维度": category,
+            "Highlights": highlights_count,
+            "Pain Points": pain_points_count,
+            "提及总数": highlights_count + pain_points_count
+        })
+    
+    return pd.DataFrame(analysis_results)
+
+# --- 3. Streamlit UI 逻辑 ---
+st.set_page_config(page_title="丙烯调研分析", layout="wide")
 
 @st.cache_data
-def load_raw_data():
-    data_map = {
-        "kids_sales.xlsx": ("儿童丙烯", "🔥 高销量 (Top 10)"),
-        "kids_trending.xlsx": ("儿童丙烯", "📈 高增长趋势"),
-        "large_capacity_sales.xlsx": ("大容量丙烯", "🔥 高销量 (Top 10)"),
-        "large_capacity_trending.xlsx": ("大容量丙烯", "📈 高增长趋势")
-    }
-    combined = []
-    for filename, info in data_map.items():
-        if os.path.exists(filename):
-            try:
-                df = pd.read_excel(filename, engine='openpyxl')
-                # 假设评论列名为 'Review Body' 或 'content'，请根据实际修改
-                review_col = 'Review Body' if 'Review Body' in df.columns else df.columns[0]
-                df['review_content'] = df[review_col] 
-                df['main_category'] = info[0]
-                df['sub_type'] = info[1]
-                combined.append(df)
-            except Exception as e:
-                st.sidebar.error(f"读取 {filename} 失败: {e}")
-    return pd.concat(combined, ignore_index=True) if combined else pd.DataFrame()
+def load_data():
+    # ... 此处保留你原本的 load_raw_data() 代码逻辑 ...
+    # 为了演示，假设已经加载成功
+    return load_raw_data() # 调用你原本定义的加载函数
 
-df = load_raw_data()
+df = load_data()
 
-# --- 4. 侧边栏导航 ---
-st.sidebar.header("📂 核心板块选择")
-selected_main = st.sidebar.radio("请选择调研产品线：", ["儿童丙烯", "大容量丙烯"])
+st.title("🎨 丙烯马克笔四大板块深度分析")
+selected_main = st.sidebar.radio("选择调研产品线：", ["儿童丙烯", "大容量丙烯"])
 filtered_df = df[df['main_category'] == selected_main]
 
-# --- 5. 主界面分析布局 ---
 if not filtered_df.empty:
-    st.title(f"🎨 {selected_main} 深度洞察看板")
-    
-    # 按照 销量 和 趋势 拆分数据
-    sales_data = filtered_df[filtered_df['sub_type'].str.contains("销量")]
-    trend_data = filtered_df[filtered_df['sub_type'].str.contains("趋势")]
-
-    # 定义展示函数
-    def render_analysis_section(data, title, color):
+    # 定义分析面板
+    def show_analysis_panel(sub_df, title):
         st.subheader(title)
-        if not data.empty:
-            # 运行词库分析逻辑
-            analysis_res = analyze_features(data['review_content'])
-            
-            # 绘图：Pain Points vs Highlights 
-            fig = px.bar(analysis_res, x="维度", y=["Highlight Count", "Pain Point Count"],
-                         title=f"{title} - 优劣势分布",
-                         barmode='group',
-                         color_discrete_map={"Highlight Count": "#2ecc71", "Pain Point Count": "#e74c3c"})
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # 显示关键结论
-            top_pain = analysis_res.loc[analysis_res['Pain Point Count'].idxmax()]
-            top_high = analysis_res.loc[analysis_res['Highlight Count'].idxmax()]
-            
-            c1, c2 = st.columns(2)
-            c1.success(f"🌟 最大亮点：{top_high['维度']} ({top_high['Highlight Count']}次提及)")
-            c2.error(f"⚠️ 最大痛点：{top_pain['维度']} ({top_pain['Pain Point Count']}次提及)")
-        else:
-            st.warning("暂无数据")
+        # 执行关键词分析 (针对 'review_content' 列)
+        # 请确保你的 Excel 中存储评论的列名正确
+        review_col = 'review_content' # 映射后的统一列名
+        results_df = get_sentiment_analysis(sub_df[review_col], RAW_FEATURE_DIC)
+        
+        # 4. 可视化图表
+        fig = px.bar(
+            results_df, 
+            x="维度", 
+            y=["Highlights", "Pain Points"],
+            barmode='group',
+            color_discrete_map={"Highlights": "#2ecc71", "Pain Points": "#e74c3c"},
+            title=f"{title} 维度分布"
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
-    # 左右对比布局
-    col_left, col_right = st.columns(2)
-    with col_left:
-        render_analysis_section(sales_data, "🔥 高销量板块 (Pain/Highlight Analysis)", "Blues")
+        # 5. 亮点/痛点自动挖掘摘要
+        top_h = results_df.sort_values("Highlights", ascending=False).iloc[0]
+        top_p = results_df.sort_values("Pain Points", ascending=False).iloc[0]
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            st.success(f"✅ **最强亮点**: {top_h['维度']} (提及 {top_h['Highlights']} 次)")
+        with c2:
+            st.error(f"❌ **核心痛点**: {top_p['维度']} (提及 {top_p['Pain Points']} 次)")
+
+    # 布局：左边销量，右边趋势
+    col_sales, col_trend = st.columns(2)
+    
+    with col_sales:
+        sales_sub = filtered_df[filtered_df['sub_type'].str.contains("销量")]
+        show_analysis_panel(sales_sub, "🔥 销量 Top 10 分析")
         
     with col_right:
-        render_analysis_section(trend_data, "📈 高增长板块 (Pain/Highlight Analysis)", "Oranges")
-
-    # 底部展示原始评论预览
-    with st.expander("查看原始评论数据预览"):
-        st.dataframe(filtered_df[['sub_type', 'review_content']].head(100))
-            
+        trend_sub = filtered_df[filtered_df['sub_type'].str.contains("趋势")]
+        show_analysis_panel(trend_sub, "📈 增长趋势分析")
 else:
-    st.error("未检测到数据。")
+    st.warning("请上传数据文件。")
