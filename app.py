@@ -541,76 +541,49 @@ if not df.empty:
         else:
             st.success("✨ 所有维度表现良好，满意度均在 60% 以上！")
 
-        # --- 7. 用户原声词云分析 (实战情报版) ---
+        # --- 7. 用户原声词云分析 (Customer Voice Focus) ---
         st.markdown("---")
-        st.markdown("### ☁️ 用户原声高频词汇和短语")
-
+        st.markdown("### ☁️ 用户原声高频词组")
+        
         from wordcloud import WordCloud, STOPWORDS
         import matplotlib.pyplot as plt
-        from collections import Counter
-        import re
 
+        # 1. 汇总当前子类下的所有英文评论
         all_text = " ".join(sub_df['review_content'].astype(str).tolist())
 
         if len(all_text) > 10:
-            # 1. 精简停用词：保留名词锚点，只删虚词
+            # 2. 设置深度降噪停用词 (排除无意义的虚词和类目词)
             eng_stopwords = set(STOPWORDS)
             custom_garbage = {
                 'marker', 'markers', 'pen', 'pens', 'product', 'really', 'will', 
-                'bought', 'set', 'get', 'much', 'even', 'actually', 'br', 'one', 
-                'like', 'just', 'also', 'make', 'made', 'go', 'can', 'would', 
-                'could', 'very', 'pretty'
+                'bought', 'set', 'get', 'much', 'even', 'color', 'paint', 'colors',
+                'work', 'good', 'great', 'love', 'used', 'using', 'actually'
             }
             eng_stopwords.update(custom_garbage)
 
-            # 2. 清洗：保留数字（为了 0.7mm 等规格）
-            clean_text = re.sub(r'[^\w\s\.]', ' ', all_text) # 保留小数点
+            # 3. 配置并生成词云 (开启 collocations 提取词组)
+            wc = WordCloud(
+                width=1000, 
+                height=450,
+                background_color='white',
+                stopwords=eng_stopwords,
+                colormap='viridis', 
+                max_words=80,      # 适当减少词数，增加词组的可见度
+                collocations=True,  # 开启词组匹配，如 "dry out", "easy use"
+                random_state=42
+            ).generate(all_text)
+
+            # 4. 使用 Matplotlib 渲染并展示到 Streamlit
+            fig_wc, ax_wc = plt.subplots(figsize=(12, 6))
+            ax_wc.imshow(wc, interpolation='bilinear')
+            ax_wc.axis("off")
+            plt.tight_layout(pad=0)
             
-            raw_words = [w.lower() for w in clean_text.split() if len(w) > 2]
-            # 过滤掉纯停用词，但保留用于组合的名词
-            filtered_words = [w for w in raw_words if w not in eng_stopwords]
-
-            if len(filtered_words) < 5:
-                st.info("💡 有效词汇太少。")
-            else:
-                # 3. 生成双词短语 (使用空格连接，更美观)
-                bigrams = [" ".join(raw_words[i:i+2]) for i in range(len(raw_words)-1) 
-                           if raw_words[i] not in eng_stopwords or raw_words[i+1] not in eng_stopwords]
-                
-                word_freq = Counter(filtered_words)
-                bigram_freq = Counter(bigrams)
-
-                # 4. 合并权重：词组权重 2 倍，单语权重 1 倍
-                combined_freq = {}
-                for word, freq in word_freq.items():
-                    if freq >= 2: combined_freq[word] = freq
-                for bigram, freq in bigram_freq.items():
-                    if freq >= 2: combined_freq[bigram] = freq * 2 
-
-                # 5. 生成词云
-                wc = WordCloud(
-                    width=800, height=400,
-                    background_color='white',
-                    colormap='viridis',
-                    max_words=40,
-                    collocations=False 
-                ).generate_from_frequencies(combined_freq)
-
-                # 6. 左右布局展示
-                fig_wc, (ax_wc, ax_list) = plt.subplots(1, 2, figsize=(16, 6), gridspec_kw={'width_ratios': [2, 1]})
-                ax_wc.imshow(wc, interpolation='bilinear')
-                ax_wc.axis("off")
-                
-                # 右侧列表按“纯频率”排序，不看权重，看真实提及次数
-                sorted_items = sorted(bigram_freq.items(), key=lambda x: x[1], reverse=True)[:15]
-                ax_list.axis("off")
-                ax_list.text(0, 1, "🎯 核心情报短语 Top 15:", fontsize=14, fontweight='bold', transform=ax_list.transAxes)
-                
-                for i, (text, freq) in enumerate(sorted_items):
-                    ax_list.text(0, 0.9 - i*0.06, f"{i+1}. {text} ({freq}次)", fontsize=12, transform=ax_list.transAxes)
-
-                st.pyplot(fig_wc)
-                plt.close(fig_wc)
+            # 使用唯一 key 避免多图冲突
+            st.pyplot(fig_wc, clear_figure=True)
+            plt.close(fig_wc) # 释放内存
+        else:
+            st.info("💡 样本量不足以生成词云。")
         
 
 else:
