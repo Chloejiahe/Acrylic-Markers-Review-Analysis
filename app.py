@@ -265,7 +265,7 @@ FEATURE_DIC = {
             '正面-适合刻字/细节': ['perfect for lettering', 'great for calligraphy', 'nice for writing greetings', 'fine tip for small details', 'beautiful for sentiments'],
             '负面-不适合刻字/细节': ['too thick for lettering', 'bleeds when writing', 'hard to do calligraphy with'],
             '正面-多表面DIY': ['perfect for rock painting', 'works great on wood', 'customizing sneakers', 'painting on glass', 'ceramic decorating', 'canvas art', 'outdoor decor', 'painting pumpkins', 'ornament decorating'],
-            '负面-不能多表面DIY': ['scrapes off glass', 'not permanent on plastic', 'faded on outdoor rocks', 'ink doesn't stick to metal'],
+            '负面-不能多表面DIY': ['scrapes off glass', 'not permanent on plastic', 'faded on outdoor rocks', "ink doesn't stick to metal"],
             '中性-提及大面积填色': ['coloring large areas', 'filling in spaces', 'large coverage', 'background coloring'],
             '中性-提及漫画/动漫创作': ['manga', 'comic art', 'anime art', 'line art', 'character art', 'cel shading'],
             '中性-提及插画创作': ['illustration', 'illustrating', 'artwork', 'for my illustrations'],
