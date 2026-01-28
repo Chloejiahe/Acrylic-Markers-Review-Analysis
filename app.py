@@ -3,90 +3,89 @@ import pandas as pd
 import plotly.express as px
 import os
 
-st.set_page_config(page_title="丙烯调研报告", layout="wide")
-st.title("🎨 丙烯颜料市场调研分析看板")
+st.set_page_config(page_title="丙烯调研-双对比版", layout="wide")
+st.title("🎨 丙烯颜料市场调研：销量王 vs 潜力股")
 
-# --- 1. 数据加载逻辑 (适配 XLSX) ---
+# --- 1. 数据加载逻辑 ---
 @st.cache_data
 def load_excel_data():
-    # 建立文件名与分类的映射
     file_map = {
-        "kids_sales.xlsx": ("儿童", "销量Top10"),
-        "kids_trending.xlsx": ("儿童", "趋势Top10"),
-        "large_capacity_sales.xlsx": ("大容量", "销量Top10"),
-        "large_capacity_trending.xlsx": ("大容量", "趋势Top10")
+        "kids_sales.xlsx": ("儿童", "销量最高"),
+        "kids_trending.xlsx": ("儿童", "趋势最高"),
+        "large_capacity_sales.xlsx": ("大容量", "销量最高"),
+        "large_capacity_trending.xlsx": ("大容量", "趋势最高")
     }
-    
     combined = []
     for filename, info in file_map.items():
         if os.path.exists(filename):
             try:
-                # 使用 openpyxl 引擎读取 Excel
                 df = pd.read_excel(filename, engine='openpyxl')
                 df['category'] = info[0]
                 df['data_type'] = info[1]
-                
-                # 统一列名：将 'Content' 或 'English Content' 统一为 'body'
-                if 'Content' in df.columns:
-                    df = df.rename(columns={'Content': 'body'})
-                elif 'English Content' in df.columns:
-                    df = df.rename(columns={'English Content': 'body'})
-                
+                # 统一列名：尝试匹配 Content 或 English Content
+                target_col = 'Content' if 'Content' in df.columns else ('English Content' if 'English Content' in df.columns else None)
+                if target_col:
+                    df = df.rename(columns={target_col: 'body'})
                 combined.append(df)
-                st.sidebar.success(f"✅ 加载成功: {filename}")
             except Exception as e:
-                st.sidebar.error(f"❌ 读取 {filename} 失败: {e}")
-    
+                st.error(f"加载 {filename} 失败: {e}")
     return pd.concat(combined, ignore_index=True) if combined else pd.DataFrame()
 
 df = load_excel_data()
 
-# --- 2. 异常处理 ---
-if df.empty:
-    st.error("🚨 还是没读到数据！")
-    st.write("当前检测到的文件：", os.listdir('.'))
-    st.stop()
+# --- 2. 侧边栏：核心产品线筛选 ---
+st.sidebar.header("📊 核心筛选")
+main_cat = st.sidebar.radio("选择调研产品线", ["儿童丙烯", "大容量成人丙烯"])
+target_tag = "儿童" if "儿童" in main_cat else "大容量"
 
-# --- 3. 业务看板界面 ---
-st.sidebar.divider()
-choice = st.sidebar.radio("选择产品线", ["儿童丙烯", "大容量款"])
-target = "儿童" if "儿童" in choice else "大容量"
-selected_df = df[df['category'] == target].copy()
+# 过滤出当前产品线的数据
+cat_df = df[df['category'] == target_tag].copy()
+cat_df['body'] = cat_df['body'].fillna('').astype(str)
 
-# 确保评论列是字符串
-selected_df['body'] = selected_df['body'].fillna('').astype(str)
+# --- 3. 页面布局：双支线对比分析 ---
+st.header(f"🔍 {main_cat}：市场基本盘 vs 新兴趋势")
 
-tab1, tab2, tab3 = st.tabs(["📊 满意点与痛点", "👤 用户画像", "💡 调研建议"])
+# 定义分析关键词
+high_kws = {"色彩/覆盖力": "vibrant|bright|coverage|pigment", "包装/收纳": "case|box|storage|organized", "礼品属性": "gift|present|grand"}
+pain_kws = {"白色缺失": "white|ran out|more white", "容易干涸": "dry|dried|stuck|clog", "物流/破损": "leak|mess|broken"}
 
-with tab1:
-    col1, col2 = st.columns(2)
-    # 定义匹配词库
-    high_kws = {"色彩覆盖力": "vibrant|bright|coverage|opacity|pigment", "收纳盒/包装": "case|box|storage|organized", "顺滑好用": "easy|flow|smooth|marker"}
-    pain_kws = {"白色颜料不足": "white|ran out|more white|extra white", "干涸/堵塞": "dry|dried|stuck|clog", "漏液": "leak|mess|spilled"}
+def get_analysis(data):
+    results = {}
+    for label, kw in {**high_kws, **pain_kws}.items():
+        results[label] = data['body'].str.contains(kw, case=False, na=False).sum()
+    return pd.Series(results)
 
-    def get_counts(data, kw_dict):
-        return pd.Series({k: data['body'].str.contains(v, case=False, na=False).sum() for k, v in kw_dict.items()})
+# 创建两个并排的列
+col_sales, col_trend = st.columns(2)
 
-    with col1:
-        st.success("✅ 满意点统计")
-        st.bar_chart(get_counts(selected_df, high_kws))
-    with col2:
-        st.error("❌ 痛点统计")
-        st.bar_chart(get_counts(selected_df, pain_kws))
+with col_sales:
+    st.subheader("🏆 销量最高 (Top 10)")
+    sales_data = cat_df[cat_df['data_type'] == "销量最高"]
+    st.write(f"样本量: {len(sales_data)} 条评论")
+    
+    # 满意点与痛点图表
+    st.bar_chart(get_analysis(sales_data))
+    
+    with st.expander("查看销量王典型评论"):
+        st.write(sales_data['body'].head(10))
 
-with tab2:
-    st.subheader("谁在买？（用户画像）")
-    persona_kws = {"家长/送礼": "gift|grand|child|son|daughter", "专业/画师": "artist|professional|mural|canvas|rock"}
-    p_counts = get_counts(selected_df, persona_kws)
-    st.plotly_chart(px.pie(values=p_counts.values, names=p_counts.index, hole=0.4))
+with col_trend:
+    st.subheader("🚀 趋势最高 (Trending)")
+    trend_data = cat_df[cat_df['data_type'] == "趋势最高"]
+    st.write(f"样本量: {len(trend_data)} 条评论")
+    
+    # 满意点与痛点图表
+    st.bar_chart(get_analysis(trend_data))
+    
+    with st.expander("查看趋势黑马典型评论"):
+        st.write(trend_data['body'].head(10))
 
-with tab3:
-    st.subheader("市场行动建议")
-    if target == "儿童":
-        st.info("儿童款调研结论：**'Case' (收纳盒)** 是核心竞争力。用户反馈这是极佳的生日/节日礼物。建议增加外盒的趣味性设计。")
-    else:
-        st.warning("大容量款调研结论：**'White' (白色)** 是最大的机会点。大量用户抱怨白色先用完，导致套装闲置。建议：套装内配置双倍容量白色。")
+# --- 4. 深度洞察对比 ---
+st.divider()
+st.subheader("💡 跨维度洞察：我们学到了什么？")
 
-st.write("---")
-st.write("📋 原始评论抽样 (前 20 条):")
-st.dataframe(selected_df[['body', 'data_type']].head(20))
+obs_col1, obs_col2 = st.columns(2)
+with obs_col1:
+    st.info("**销量款告诉我们‘底线’**：\n\n这些成熟产品最常被吐槽的问题，就是我们必须解决的‘入场券’（例如：大容量款必须多配白色）。")
+with obs_col2:
+    st.warning("**趋势款告诉我们‘机会’**：\n\n新爆款往往是因为解决了一个特定痛点（如：儿童款带了收纳包）而迅速蹿红，这是我们要抄的‘近道’。")
