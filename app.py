@@ -404,7 +404,31 @@ if not df.empty:
 
     # 遍历子类型，采用垂直流布局
     for sub_name in sub_types:
-        st.markdown(f"### {sub_name} 深度洞察")
+        st.write("") 
+        st.write("")
+        st.divider() # 画一条醒目的水平分割线
+        
+        # 2. 使用 HTML 定义一个巨大、带背景色的标题块
+        st.markdown(f"""
+            <div style="
+                background-color: #f8f9fa; 
+                padding: 20px; 
+                border-radius: 15px; 
+                margin-top: 40px; 
+                margin-bottom: 30px; 
+                border-left: 10px solid #1f77b4;
+                box-shadow: 2px 2px 5px rgba(0,0,0,0.05);
+            ">
+                <h2 style="
+                    margin: 0; 
+                    color: #1f77b4; 
+                    font-size: 36px; 
+                    font-weight: bold;
+                ">
+                    {sub_name} 深度洞察
+                </h2>
+            </div>
+        """, unsafe_allow_html=True)
         sub_df = filtered[filtered['sub_type'] == sub_name]
         analysis_res = analyze_sentiments(sub_df)
         
@@ -517,9 +541,9 @@ if not df.empty:
         else:
             st.success("✨ 所有维度表现良好，满意度均在 60% 以上！")
 
-        # --- 7. 全量英文高频词云 (Customer Voice Focus) ---
+        # --- 7. 用户原声词云分析 (Customer Voice Focus) ---
         st.markdown("---")
-        st.markdown("### ☁️ Customer Voice: High-Frequency Keywords")
+        st.markdown("### ☁️ 用户原声高频词组")
         
         from wordcloud import WordCloud, STOPWORDS
         import matplotlib.pyplot as plt
@@ -528,19 +552,24 @@ if not df.empty:
         all_text = " ".join(sub_df['review_content'].astype(str).tolist())
 
         if len(all_text) > 10:
-            # 2. 设置英文停用词 (排除无意义的虚词)
+            # 2. 设置深度降噪停用词 (排除无意义的虚词和类目词)
             eng_stopwords = set(STOPWORDS)
-            # 你可以根据实际情况添加一些干扰词，比如产品名
-            eng_stopwords.update(['marker', 'markers', 'pen', 'pens', 'product', 'really', 'will', 'bought', 'set', 'get'])
+            custom_garbage = {
+                'marker', 'markers', 'pen', 'pens', 'product', 'really', 'will', 
+                'bought', 'set', 'get', 'much', 'even', 'color', 'paint', 'colors',
+                'work', 'good', 'great', 'love', 'used', 'using', 'actually'
+            }
+            eng_stopwords.update(custom_garbage)
 
-            # 3. 配置并生成词云
+            # 3. 配置并生成词云 (开启 collocations 提取词组)
             wc = WordCloud(
                 width=1000, 
                 height=450,
                 background_color='white',
                 stopwords=eng_stopwords,
-                colormap='viridis',  # 颜色系：viridis 比较专业且清晰
-                max_words=100,
+                colormap='viridis', 
+                max_words=80,      # 适当减少词数，增加词组的可见度
+                collocations=True,  # 开启词组匹配，如 "dry out", "easy use"
                 random_state=42
             ).generate(all_text)
 
@@ -550,9 +579,12 @@ if not df.empty:
             ax_wc.axis("off")
             plt.tight_layout(pad=0)
             
-            st.pyplot(fig_wc)
+            # 使用唯一 key 避免多图冲突
+            st.pyplot(fig_wc, clear_figure=True)
+            plt.close(fig_wc) # 释放内存
         else:
             st.info("💡 样本量不足以生成词云。")
+        
 
 else:
     st.info("💡 请确保数据加载正确。")
