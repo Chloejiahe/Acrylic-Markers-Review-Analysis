@@ -343,8 +343,8 @@ def analyze_sentiments(df_sub):
             if not keywords: continue
             
             # 【核心优化】：将词库中的直引号替换为正则，兼容弯引号
-            # 这样 'doesn\'t' 能同时匹配 doesn't 和 doesn’t
-            safe_keywords = [re.escape(k).replace(r"\'", "['’]") for k in keywords]
+            # 这样 'doesn\'t' 能同时匹配 doesn't 和 doesn't
+            safe_keywords = [re.escape(k).replace(r"\'", "['']") for k in keywords]
             pattern = '|'.join(safe_keywords)
             
             # 确保匹配时不区分大小写
@@ -357,11 +357,12 @@ def analyze_sentiments(df_sub):
             else:
                 neu_score += count # 记录中性热度
         
+        # 【修改这里】：统一列名，去掉英文部分或保持一致
         results.append({
             "维度": category,
-            "亮点 (Highlights)": pos_score,
-            "痛点 (Pain Points)": neg_score,
-            "热度 (Mentions)": neu_score  # 建议把这个也存进去
+            "亮点": pos_score,  # 去掉 (Highlights)
+            "痛点": neg_score,  # 去掉 (Pain Points)
+            "热度": neu_score   # 去掉 (Mentions)
         })
     return pd.DataFrame(results)
 
@@ -396,23 +397,23 @@ if not df.empty:
             fig = px.bar(
                 analysis_res, 
                 x="维度", 
-                y=["亮点 (Highlights)", "痛点 (Pain Points)"],
+                y=["亮点", "痛点"],  # 改为中文列名
                 title=f"{sub_name} - 维度分布",
                 barmode="group",
-                color_discrete_map={"亮点 (Highlights)": "#2ecc71", "痛点 (Pain Points)": "#e74c3c"}
+                color_discrete_map={"亮点": "#2ecc71", "痛点": "#e74c3c"}
             )
             
             # 【修改点 1】：添加唯一的 key，防止 DuplicateElementId 报错
             st.plotly_chart(fig, use_container_width=True, key=f"chart_{target}_{i}")
             
             # 显示最突出的痛点
-            if not analysis_res.empty and analysis_res["痛点 (Pain Points)"].sum() > 0:
-                top_pain = analysis_res.sort_values("痛点 (Pain Points)", ascending=False).iloc[0]
-                
-                # 【修改点 2】：用容器包裹或确保逻辑唯一，提示核心痛点
-                st.warning(f"⚠️ **{sub_name}** 核心痛点：{top_pain['维度']} ({top_pain['痛点 (Pain Points)']}次)")
+            if not analysis_res.empty and analysis_res["痛点"].sum() > 0:  # 改为"痛点"
+                top_pain = analysis_res.sort_values("痛点", ascending=False).iloc[0]  # 改为"痛点"
+    
+            # 【修改点 2】：用容器包裹或确保逻辑唯一，提示核心痛点
+                st.warning(f"⚠️ **{sub_name}** 核心痛点：{top_pain['维度']} ({top_pain['痛点']}次)")  # 改为"痛点"
             else:
-                st.success(f"✅ {sub_name} 暂无显著痛点反馈")
+                st.success(f"✅ {sub_name} 暂无显著痛点反馈"))
 
 else:
     st.info("💡 请确保根目录下有对应的 .xlsx 文件（如 kids_sales.xlsx）")
