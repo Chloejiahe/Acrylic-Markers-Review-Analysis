@@ -53,15 +53,15 @@ FEATURE_DIC = {
             '中性-提及笔头': ['dual tip', 'brush tip', 'fine liner', 'chisel nib', 'bullet point', 'dot marker', 'line variation', '0.5mm']
         },
         '笔头耐用性': {
-            '正面-耐磨损/抗分叉': ["doesn't fray", 'no fraying', 'resists fraying', 'tip hasn\'t worn down', 'holds up to heavy use','no splitting', "doesn't split", 'tip is still intact', 'no signs of wear'],
-            '负面-磨损/分叉': ['fray', 'fraying', 'frayed tip', 'frays easily', 'split', 'splitting', 'split nib','wears out quickly', 'wear down fast', 'tip wear', 'tip is gone'],
-            '正面-保形性好/硬度佳':['retains its shape', 'holds its point', 'keeps its point', 'point stays sharp', 'tip is still sharp',"doesn't get mushy", "doesn't go flat", 'springs back nicely', 'good snap'],
-            '负面-形变/软化': ['gets mushy', 'too soft', 'tip softened', 'spongy tip', 'loses its point', 'lost its fine point', 'point went dull', 'no longer sharp', 'deformed', 'lose its shape', 'went flat', 'lost its snap', "doesn't spring back"],
-            '正面-坚固/抗损坏':['durable tip', 'sturdy tip', 'robust nib', 'heavy duty', 'resilient tip', 'holds up to pressure','doesn\'t bend', 'doesn\'t break', 'unbreakable tip', 'withstands abuse'],
-            '负面-意外损坏': ['bent tip', 'breaks easily', 'snapped', 'snapped off', 'cracked tip', 'chipped tip', 'broke', 'broken', 'damaged tip', 'tip fell out', 'pushed the tip in', 'tip receded'],
-            '负面-寿命不匹配': ['tip wore out before ink ran out', 'felt tip died before the ink','plenty of ink left but tip is useless', 'tip dried out but pen is full', 'nib is gone but still has ink'],
-            '正面-寿命长': ['long lasting tip', 'tip lasts a long time', 'tip outlasts the ink', 'good longevity'],
-            },
+            '正面-耐磨损/抗分叉': ["doesn't fray", 'no fraying', 'resists fraying', 'not splitting', 'still intact', 'no signs of wear', 'holds up'],
+            '负面-磨损/分叉': ['fray', 'fraying', 'frayed tip', 'split nib', 'splitting', 'wears out quickly', 'wear down fast', 'tip is gone'],
+            '正面-保形/硬度佳': ['retains shape', 'holds its point', 'stays sharp', "doesn't get mushy", "doesn't go flat", 'springs back', 'good snap'],
+            '负面-形变/软化': ['gets mushy', 'too soft', 'tip softened', 'spongy', 'lost its point', 'point went dull', 'deformed', 'went flat'],
+            '正面-坚固抗损': ['durable tip', 'sturdy nib', 'robust', 'heavy duty', 'resilient', 'withstands pressure', "doesn't break"],
+            '负面-意外损坏': ['bent tip', 'breaks easily', 'snapped', 'cracked tip', 'chipped', 'damaged', 'tip fell out', 'pushed in', 'receded'],
+            '负面-寿命不匹配': ['tip wore out before ink', 'died before the ink', 'ink left but tip is useless', 'nib is gone but still has ink'],
+            '正面-寿命长': ['long lasting tip', 'outlasts the ink', 'good longevity', 'lasts a long time']
+        },
         '流畅性': {
             '正面-书写流畅': ['writes smoothly', 'buttery smooth', 'glides on surface', 'effortless application', 'flows like a dream', 'like silk', 'no resistance', 'smooth as butter', 
                          'glides across the canvas', 'seamless flow', 'very fluid'],
@@ -337,18 +337,31 @@ def analyze_sentiments(df_sub):
     for category, sub_dict in FEATURE_DIC.items():
         pos_score = 0
         neg_score = 0
+        neu_score = 0  # 新增：统计热度（中性提及）
+        
         for tag, keywords in sub_dict.items():
-            pattern = '|'.join([re.escape(k) for k in keywords])
-            count = df_sub['review_content'].str.contains(pattern, na=False).sum()
-            if '正面' in tag:
+            if not keywords: continue
+            
+            # 【核心优化】：将词库中的直引号替换为正则，兼容弯引号
+            # 这样 'doesn\'t' 能同时匹配 doesn't 和 doesn’t
+            safe_keywords = [re.escape(k).replace(r"\'", "['’]") for k in keywords]
+            pattern = '|'.join(safe_keywords)
+            
+            # 确保匹配时不区分大小写
+            count = df_sub['review_content'].str.contains(pattern, na=False, flags=re.IGNORECASE).sum()
+            
+            if '正面' in tag or '喜爱' in tag:
                 pos_score += count
-            elif '负面' in tag:
+            elif '负面' in tag or '不满' in tag:
                 neg_score += count
+            else:
+                neu_score += count # 记录中性热度
         
         results.append({
             "维度": category,
             "亮点 (Highlights)": pos_score,
-            "痛点 (Pain Points)": neg_score
+            "痛点 (Pain Points)": neg_score,
+            "热度 (Mentions)": neu_score  # 建议把这个也存进去
         })
     return pd.DataFrame(results)
 
