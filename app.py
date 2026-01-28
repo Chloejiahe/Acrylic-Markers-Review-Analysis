@@ -335,93 +335,110 @@ def load_raw_data():
     
     return pd.concat(combined, ignore_index=True) if combined else pd.DataFrame()
 
-# --- 3. 核心分析逻辑 (匹配词库) ---
+# --- 3. 核心分析逻辑 ---
 def analyze_sentiments(df_sub):
     results = []
     for category, sub_dict in FEATURE_DIC.items():
-        pos_score = 0
-        neg_score = 0
-        neu_score = 0  # 新增：统计热度（中性提及）
-        
+        pos_score, neg_score, neu_score = 0, 0, 0
+        hit_details = [] # 用于下钻分析：记录匹配到的具体标签
+
         for tag, keywords in sub_dict.items():
             if not keywords: continue
             
-            # 【核心优化】：将词库中的直引号替换为正则，兼容弯引号
-            # 这样 'doesn\'t' 能同时匹配 doesn't 和 doesn't
-            safe_keywords = [re.escape(k).replace(r"\'", "['']") for k in keywords]
+            # 正则优化：兼容弯引号
+            safe_keywords = [re.escape(k).replace(r"\'", "['’]") for k in keywords]
             pattern = '|'.join(safe_keywords)
             
-            # 确保匹配时不区分大小写
             count = df_sub['review_content'].str.contains(pattern, na=False, flags=re.IGNORECASE).sum()
             
-            if '正面' in tag or '喜爱' in tag:
-                pos_score += count
-            elif '负面' in tag or '不满' in tag:
-                neg_score += count
-            else:
-                neu_score += count # 记录中性热度
+            if count > 0:
+                if '正面' in tag or '喜爱' in tag:
+                    pos_score += count
+                elif '负面' in tag or '不满' in tag:
+                    neg_score += count
+                    hit_details.append(f"{tag.split('-')[-1]}({count})")
+                else:
+                    neu_score += count
+
+        # --- Deep Analysis: 计算满意度 ---
+        total_vocal = pos_score + neg_score
+        # 满意度 = 亮点 / 总评价提及数
+        sentiment_score = round(pos_score / total_vocal * 100, 1) if total_vocal > 0 else 0
         
-        # 【修改这里】：统一列名，去掉英文部分或保持一致
         results.append({
             "维度": category,
-            "亮点": pos_score,  # 去掉 (Highlights)
-            "痛点": neg_score,  # 去掉 (Pain Points)
-            "热度": neu_score   # 去掉 (Mentions)
+            "亮点": pos_score,
+            "痛点": neg_score,
+            "热度": neu_score,
+            "满意度": sentiment_score,
+            "痛点分布": ", ".join(hit_details) if hit_details else "无"
         })
     return pd.DataFrame(results)
 
 # --- 4. Streamlit 页面布局 ---
 st.set_page_config(page_title="丙烯笔深度调研", layout="wide")
-st.title("🎨 丙烯马克笔词库深度挖掘面板")
+st.title("🎨 丙烯马克笔消费者洞察深挖看板")
 
 df = load_raw_data()
 
 if not df.empty:
-    with st.expander("🔍 原始数据采样 (前5行)"):
-        st.write(df[['sub_type', 'review_content']].head())
-
-if not df.empty:
-    # 侧边栏筛选
-    target = st.sidebar.radio("选择分析对象", df['main_category'].unique())
+    # 侧边栏
+    target = st.sidebar.radio("🎯 选择分析类目", df['main_category'].unique())
     filtered = df[df['main_category'] == target]
-    
-    col1, col2 = st.columns(2)
-    
-    # 获取子类型列表（例如：高销量、高增长）
     sub_types = filtered['sub_type'].unique()
-    
-    for i, sub_name in enumerate(sub_types):
-        # 决定放在左列还是右列
-        current_col = col1 if i % 2 == 0 else col2
+
+    # 遍历子类型，采用垂直流布局
+    for sub_name in sub_types:
+        st.markdown(f"### 🚀 {sub_name} 深度洞察")
+        sub_df = filtered[filtered['sub_type'] == sub_name]
+        analysis_res = analyze_sentiments(sub_df)
         
-        with current_col:
-            st.subheader(sub_name)
-            sub_df = filtered[filtered['sub_type'] == sub_name]
-            
-            # 执行词库匹配分析
-            analysis_res = analyze_sentiments(sub_df)
-            
-            # 绘制对比图
-            fig = px.bar(
-                analysis_res, 
-                x="维度", 
-                y=["亮点", "痛点"],  # 改为中文列名
-                title=f"{sub_name} - 维度分布",
-                barmode="group",
-                color_discrete_map={"亮点": "#2ecc71", "痛点": "#e74c3c"}
-            )
-            
-            # 【修改点 1】：添加唯一的 key，防止 DuplicateElementId 报错
-            st.plotly_chart(fig, use_container_width=True, key=f"chart_{target}_{i}")
-            
-            # 显示最突出的痛点
-            if not analysis_res.empty and analysis_res["痛点"].sum() > 0:  # 改为"痛点"
-                top_pain = analysis_res.sort_values("痛点", ascending=False).iloc[0]  # 改为"痛点"
-    
-            # 【修改点 2】：用容器包裹或确保逻辑唯一，提示核心痛点
-                st.warning(f"⚠️ **{sub_name}** 核心痛点：{top_pain['维度']} ({top_pain['痛点']}次)")  # 改为"痛点"
-            else:
-                st.success(f"✅ {sub_name} 暂无显著痛点反馈")
+        # 顶部指标卡：一眼看清大盘
+        m1, m2, m3, m4 = st.columns(4)
+        total_pos = analysis_res["亮点"].sum()
+        total_neg = analysis_res["痛点"].sum()
+        health_rate = round(total_pos / (total_pos + total_neg) * 100) if (total_pos + total_neg) > 0 else 0
+        
+        m1.metric("亮点总提及", total_pos)
+        m2.metric("痛点总提及", total_neg, delta=f"-{total_neg}", delta_color="inverse")
+        m3.metric("整体健康度", f"{health_rate}%")
+        m4.metric("样本量", len(sub_df))
+
+        # 中间图表部分
+        # 增加高度，避免 X 轴文字拥挤
+        fig = px.bar(
+            analysis_res, 
+            x="维度", 
+            y=["亮点", "痛点"],
+            title=f"【{sub_name}】各维度情感倾向分布",
+            barmode="group",
+            text_auto='.2s',
+            height=500,
+            color_discrete_map={"亮点": "#2ecc71", "痛点": "#e74c3c"}
+        )
+        
+        # 增加满意度趋势线（辅助分析）
+        st.plotly_chart(fig, use_container_width=True)
+
+        # 底部数据下钻：找出真正的“隐患”
+        st.markdown("🔍 **痛点根因追踪 (Root Cause Analysis)**")
+        # 筛选满意度低于 50% 且有一定提及量的维度
+        pain_df = analysis_res[analysis_res["痛点"] > 0].sort_values("满意度", ascending=True).head(3)
+        
+        if not pain_df.empty:
+            cols = st.columns(len(pain_df))
+            for idx, (_, row) in enumerate(pain_df.iterrows()):
+                with cols[idx]:
+                    # 满意度越低，颜色越红
+                    color = "red" if row['满意度'] < 40 else "orange"
+                    st.markdown(f"""
+                    <div style="padding:15px; border-radius:10px; border-left: 5px solid {color}; background-color: #f9f9f9">
+                        <h4 style="margin:0">{row['维度']}</h4>
+                        <p style="color:gray; font-size:12px">满意度: {row['满意度']}%</p>
+                        <p style="font-size:14px">主要问题：<br/><b>{row['痛点分布']}</b></p>
+                    </div>
+                    """, unsafe_allow_html=True)
+        st.write("") # 间距
 
 else:
-    st.info("💡 请确保根目录下有对应的 .xlsx 文件（如 kids_sales.xlsx）")
+    st.info("💡 请确保数据加载正确。")
