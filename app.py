@@ -517,5 +517,42 @@ if not df.empty:
         else:
             st.success("✨ 所有维度表现良好，满意度均在 60% 以上！")
 
+        # --- 7. 全量英文高频词云 (Customer Voice Focus) ---
+        st.markdown("---")
+        st.markdown("### ☁️ Customer Voice: High-Frequency Keywords")
+        
+        from wordcloud import WordCloud, STOPWORDS
+        import matplotlib.pyplot as plt
+
+        # 1. 汇总当前子类下的所有英文评论
+        all_text = " ".join(sub_df['review_content'].astype(str).tolist())
+
+        if len(all_text) > 10:
+            # 2. 设置英文停用词 (排除无意义的虚词)
+            eng_stopwords = set(STOPWORDS)
+            # 你可以根据实际情况添加一些干扰词，比如产品名
+            eng_stopwords.update(['marker', 'markers', 'pen', 'pens', 'product', 'really', 'will', 'bought', 'set', 'get'])
+
+            # 3. 配置并生成词云
+            wc = WordCloud(
+                width=1000, 
+                height=450,
+                background_color='white',
+                stopwords=eng_stopwords,
+                colormap='viridis',  # 颜色系：viridis 比较专业且清晰
+                max_words=100,
+                random_state=42
+            ).generate(all_text)
+
+            # 4. 使用 Matplotlib 渲染并展示到 Streamlit
+            fig_wc, ax_wc = plt.subplots(figsize=(12, 6))
+            ax_wc.imshow(wc, interpolation='bilinear')
+            ax_wc.axis("off")
+            plt.tight_layout(pad=0)
+            
+            st.pyplot(fig_wc)
+        else:
+            st.info("💡 样本量不足以生成词云。")
+
 else:
     st.info("💡 请确保数据加载正确。")
