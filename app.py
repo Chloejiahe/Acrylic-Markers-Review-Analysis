@@ -451,12 +451,18 @@ if not df.empty:
     
     col1, col2 = st.columns(2)
     
-    # 分别分析“高销量”和“高增长”
-    for i, sub_name in enumerate(filtered['sub_type'].unique()):
-        with (col1 if i == 0 else col2):
+    # 获取子类型列表（例如：高销量、高增长）
+    sub_types = filtered['sub_type'].unique()
+    
+    for i, sub_name in enumerate(sub_types):
+        # 决定放在左列还是右列
+        current_col = col1 if i % 2 == 0 else col2
+        
+        with current_col:
             st.subheader(sub_name)
             sub_df = filtered[filtered['sub_type'] == sub_name]
             
+            # 执行词库匹配分析
             analysis_res = analyze_sentiments(sub_df)
             
             # 绘制对比图
@@ -464,14 +470,22 @@ if not df.empty:
                 analysis_res, 
                 x="维度", 
                 y=["亮点 (Highlights)", "痛点 (Pain Points)"],
+                title=f"{sub_name} - 维度分布",
                 barmode="group",
                 color_discrete_map={"亮点 (Highlights)": "#2ecc71", "痛点 (Pain Points)": "#e74c3c"}
             )
-            st.plotly_chart(fig, use_container_width=True)
+            
+            # 【修改点 1】：添加唯一的 key，防止 DuplicateElementId 报错
+            st.plotly_chart(fig, use_container_width=True, key=f"chart_{target}_{i}")
             
             # 显示最突出的痛点
-            top_pain = analysis_res.sort_values("痛点 (Pain Points)", ascending=False).iloc[0]
-            st.error(f"⚠️ 核心痛点提醒：**{top_pain['维度']}** (提及 {top_pain['痛点 (Pain Points)']} 次)")
+            if not analysis_res.empty and analysis_res["痛点 (Pain Points)"].sum() > 0:
+                top_pain = analysis_res.sort_values("痛点 (Pain Points)", ascending=False).iloc[0]
+                
+                # 【修改点 2】：用容器包裹或确保逻辑唯一，提示核心痛点
+                st.warning(f"⚠️ **{sub_name}** 核心痛点：{top_pain['维度']} ({top_pain['痛点 (Pain Points)']}次)")
+            else:
+                st.success(f"✅ {sub_name} 暂无显著痛点反馈")
 
 else:
     st.info("💡 请确保根目录下有对应的 .xlsx 文件（如 kids_sales.xlsx）")
