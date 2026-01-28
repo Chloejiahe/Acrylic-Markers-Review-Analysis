@@ -541,47 +541,55 @@ if not df.empty:
         else:
             st.success("✨ 所有维度表现良好，满意度均在 60% 以上！")
 
-        # --- 7. 用户原声词云分析 (Customer Voice Focus) ---
+        # --- 7. 用户原声词云分析 (针对词组优化版) ---
         st.markdown("---")
         st.markdown("### ☁️ 用户原声高频词组")
         
         from wordcloud import WordCloud, STOPWORDS
         import matplotlib.pyplot as plt
+        import collections
 
-        # 1. 汇总当前子类下的所有英文评论
+        # 1. 获取纯净文本
         all_text = " ".join(sub_df['review_content'].astype(str).tolist())
 
         if len(all_text) > 10:
-            # 2. 设置深度降噪停用词 (排除无意义的虚词和类目词)
+            # 2. 停用词设置
             eng_stopwords = set(STOPWORDS)
             custom_garbage = {
                 'marker', 'markers', 'pen', 'pens', 'product', 'really', 'will', 
                 'bought', 'set', 'get', 'much', 'even', 'color', 'paint', 'colors',
-                'work', 'good', 'great', 'love', 'used', 'using', 'actually'
+                'work', 'good', 'great', 'love', 'used', 'using', 'actually', 'br'
             }
             eng_stopwords.update(custom_garbage)
 
-            # 3. 配置并生成词云 (开启 collocations 提取词组)
+            # 3. 【核心修正】：手动生成双词短语 (Bigrams)
+            words = [w for w in all_text.split() if w not in eng_stopwords and len(w) > 2]
+            bigrams = [" ".join(pair) for pair in zip(words, words[1:])]
+            
+            # 将单词和短语混合，但给短语更高的权重
+            # 如果你只想看短语，可以直接用 bigram_text = " ".join(bigrams)
+            combined_text = " ".join(words) + " " + " ".join(bigrams)
+
+            # 4. 配置并生成词云
             wc = WordCloud(
                 width=1000, 
                 height=450,
                 background_color='white',
-                stopwords=eng_stopwords,
+                # 既然我们手动处理了词组，这里可以关掉默认的 collocations 避免干扰
+                collocations=False, 
                 colormap='viridis', 
-                max_words=80,      # 适当减少词数，增加词组的可见度
-                collocations=True,  # 开启词组匹配，如 "dry out", "easy use"
+                max_words=60, # 减少总数能让词组更显眼
                 random_state=42
-            ).generate(all_text)
+            ).generate(combined_text)
 
-            # 4. 使用 Matplotlib 渲染并展示到 Streamlit
+            # 5. 展示
             fig_wc, ax_wc = plt.subplots(figsize=(12, 6))
             ax_wc.imshow(wc, interpolation='bilinear')
             ax_wc.axis("off")
             plt.tight_layout(pad=0)
             
-            # 使用唯一 key 避免多图冲突
             st.pyplot(fig_wc, clear_figure=True)
-            plt.close(fig_wc) # 释放内存
+            plt.close(fig_wc)
         else:
             st.info("💡 样本量不足以生成词云。")
         
