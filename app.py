@@ -454,25 +454,32 @@ if not df.empty:
 
         st.plotly_chart(fig, use_container_width=True, key=f"chart_{sub_name}")
 
-        # 底部数据下钻：找出真正的“隐患”
+        # 6. 底部数据下钻：找出所有“及格线以下”的隐患
         st.markdown("🔍 **痛点根因追踪 (Root Cause Analysis)**")
-        # 筛选满意度低于 50% 且有一定提及量的维度
-        pain_df = analysis_res[analysis_res["痛点"] > 0].sort_values("满意度", ascending=True).head(3)
         
+        # 筛选：有痛点提及，且满意度低于 60% 的所有维度
+        pain_df = analysis_res[(analysis_res["痛点"] > 0) & (analysis_res["满意度"] < 60)].sort_values("满意度", ascending=True)
+
         if not pain_df.empty:
-            cols = st.columns(len(pain_df))
-            for idx, (_, row) in enumerate(pain_df.iterrows()):
-                with cols[idx]:
-                    # 满意度越低，颜色越红
-                    color = "red" if row['满意度'] < 40 else "orange"
-                    st.markdown(f"""
-                    <div style="padding:15px; border-radius:10px; border-left: 5px solid {color}; background-color: #f9f9f9">
-                        <h4 style="margin:0">{row['维度']}</h4>
-                        <p style="color:gray; font-size:12px">满意度: {row['满意度']}%</p>
-                        <p style="font-size:14px">主要问题：<br/><b>{row['痛点分布']}</b></p>
-                    </div>
-                    """, unsafe_allow_html=True)
-        st.write("") # 间距
+            # 使用 container 配合 columns 实现每行显示 3 个，自动换行
+            rows = [pain_df.iloc[i:i+3] for i in range(0, len(pain_df), 3)]
+            
+            for row_data in rows:
+                cols = st.columns(3) # 固定一行 3 个
+                for idx, (_, row) in enumerate(row_data.iterrows()):
+                    with cols[idx]:
+                        # 满意度越低，颜色越红
+                        color = "red" if row['满意度'] < 40 else "orange"
+                        st.markdown(f"""
+                        <div style="padding:15px; border-radius:10px; border-left: 5px solid {color}; 
+                             background-color: #f9f9f9; margin-bottom: 10px; min-height: 180px;">
+                            <h4 style="margin:0">{row['维度']}</h4>
+                            <p style="color:gray; font-size:12px">满意度: {row['满意度']}%</p>
+                            <p style="font-size:14px">主要问题：<br/><b>{row['痛点分布']}</b></p>
+                        </div>
+                        """, unsafe_allow_html=True)
+        else:
+            st.success("✨ 所有维度表现良好，满意度均在 60% 以上！")
 
 else:
     st.info("💡 请确保数据加载正确。")
