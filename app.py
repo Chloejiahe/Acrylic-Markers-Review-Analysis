@@ -308,9 +308,6 @@ FEATURE_DIC = {
 # --- 2. 数据加载函数 (修复 Missing load_raw_data 错误) ---
 @st.cache_data
 def load_raw_data():
-    """
-    加载本地 Excel 文件并打上标签
-    """
     data_map = {
         "kids_sales.xlsx": ("儿童丙烯", "🔥 高销量 (Top 10)"),
         "kids_trending.xlsx": ("儿童丙烯", "📈 高增长趋势"),
@@ -324,8 +321,15 @@ def load_raw_data():
             df_temp = pd.read_excel(filename)
             df_temp['main_category'] = info[0]
             df_temp['sub_type'] = info[1]
-            # 自动识别评论列（通常是第一列或包含 Review 的列）
-            col_name = 'Review Body' if 'Review Body' in df_temp.columns else df_temp.columns[0]
+            
+            # --- 核心修复：指定评论列为 'Content' ---
+            if 'Content' in df_temp.columns:
+                col_name = 'Content'
+            else:
+                # 备用逻辑：如果某些表叫 Review Body 也能兼容
+                col_name = 'Review Body' if 'Review Body' in df_temp.columns else df_temp.columns[0]
+            
+            # 将内容转为小写字符串，确保匹配不受大小写影响
             df_temp['review_content'] = df_temp[col_name].astype(str).str.lower()
             combined.append(df_temp)
     
