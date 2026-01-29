@@ -1,8 +1,9 @@
-import streamlit as st
 import pandas as pd
-import plotly.express as px
-import os
-import re
+import numpy as np
+import os, re
+import streamlit as st
+from textblob import TextBlob
+from nltk.tokenize import sent_tokenize
 
 # --- 1. 核心词库配置 (Feature Keywords) ---
 FEATURE_DIC = {
@@ -319,75 +320,109 @@ def load_raw_data():
     for filename, info in data_map.items():
         if os.path.exists(filename):
             df_temp = pd.read_excel(filename)
-            df_temp['main_category'] = info[0]
-            df_temp['sub_type'] = info[1]
+            # 自动识别评论列
+            col_name = 'Content' if 'Content' in df_temp.columns else \
+                       ('Review Body' if 'Review Body' in df_temp.columns else df_temp.columns[0])
             
-            # --- 核心修复：指定评论列为 'Content' ---
-            if 'Content' in df_temp.columns:
-                col_name = 'Content'
-            else:
-                # 备用逻辑：如果某些表叫 Review Body 也能兼容
-                col_name = 'Review Body' if 'Review Body' in df_temp.columns else df_temp.columns[0]
+            # --- 优化1：句子级拆分 + 语义极性感知 ---
+            # 目的：解决 "Not leaky at all" 被误判的问题
+            df_temp = df_temp.dropna(subset=[col_name])
             
-            # 将内容转为小写字符串，确保匹配不受大小写影响
-            df_temp['review_content'] = df_temp[col_name].astype(str).str.lower()
-            combined.append(df_temp)
+            # 定义句子拆分函数
+            def split_and_analyze(text):
+                sentences = sent_tokenize(str(text).lower())
+                results = []
+                for s in sentences:
+                    # 获取该句子的情感极性 (-1.0 到 1.0)
+                    pol = TextBlob(s).sentiment.polarity
+                    results.append({'text': s, 'polarity': pol})
+                return results
+
+            # 将长评论拆成小句，并保留原始 Rating
+            df_temp['sentences'] = df_temp[col_name].apply(split_and_analyze)
+            # 展开（Explode）使每一行变成一个独立的句子
+            df_exploded = df_temp.explode('sentences')
+            df_exploded['s_text'] = df_exploded['sentences'].apply(lambda x: x['text'])
+            df_exploded['s_pol'] = df_exploded['sentences'].apply(lambda x: x['polarity'])
+            
+            df_exploded['main_category'] = info[0]
+            df_exploded['sub_type'] = info[1]
+            combined.append(df_exploded)
     
     return pd.concat(combined, ignore_index=True) if combined else pd.DataFrame()
 
-# --- 3. 核心分析逻辑 ---
+# --- 3. 核心分析逻辑 (优化版：引入评分加权与深度透视) ---
 def analyze_sentiments(df_sub):
     results = []
-    # 获取全盘平均分，用于贝叶斯修正或对比
-    global_avg_rating = df_sub['Rating'].mean() if 'Rating' in df_sub.columns else 0
+    
+    # 提前计算所有句子的总数
+    total_reviews_count = len(df_sub)
     
     for category, sub_dict in FEATURE_DIC.items():
-        pos_score, neg_score, neu_score = 0, 0, 0
+        pos_score, neg_score = 0.0, 0.0
         hit_details = []
-        matched_ratings = [] # 新增：存储该维度的评分
+        matched_ratings = []
+        
+        # 记录该维度下所有命中的样本量，用于计算置信度
+        dimension_vocal_count = 0 
 
         for tag, keywords in sub_dict.items():
             if not keywords: continue
-            safe_keywords = [re.escape(k).replace(r"\'", "['’]") for k in keywords]
-            pattern = '|'.join(safe_keywords)
             
-            # 找到匹配的行
-            mask = df_sub['review_content'].str.contains(pattern, na=False, flags=re.IGNORECASE)
-            count = mask.sum()
+            # 优化2：正则性能加速
+            pattern = '|'.join([re.escape(k) for k in keywords])
             
-            if count > 0:
-                # 收集评分数据
-                if 'Rating' in df_sub.columns:
-                    matched_ratings.extend(df_sub[mask]['Rating'].tolist())
-                
-                if '正面' in tag or '喜爱' in tag:
-                    pos_score += count
-                elif '负面' in tag or '不满' in tag:
-                    neg_score += count
-                    hit_details.append(f"{tag.split('-')[-1]}({count})")
+            # 在已拆分的句子中匹配
+            mask = df_sub['s_text'].str.contains(pattern, na=False)
+            matched_df = df_sub[mask]
+            
+            if not matched_df.empty:
+                # 语义过滤：
+                # 如果是寻找痛点（负面标签），要求情感极性 < 0 或 Rating <= 3
+                # 如果是寻找亮点（正面标签），要求情感极性 > 0 或 Rating >= 4
+                if '负面' in tag or '不满' in tag:
+                    # 排除掉虽然含关键词但情感是正向的句子（如 "No leaks"）
+                    valid_match = matched_df[(matched_df['s_pol'] < 0.1) | (matched_df['Rating'] <= 3)]
+                    weight = 1.5 if valid_match['Rating'].mean() <= 2.1 else 1.0
+                    neg_score += (len(valid_match) * weight)
+                    count = len(valid_match)
+                elif '正面' in tag or '喜爱' in tag:
+                    valid_match = matched_df[(matched_df['s_pol'] > -0.1) | (matched_df['Rating'] >= 4)]
+                    pos_score += len(valid_match)
+                    count = len(valid_match)
                 else:
-                    neu_score += count
+                    count = len(matched_df)
 
-        # 计算维度平均分
-        dim_rating = round(sum(matched_ratings) / len(matched_ratings), 2) if matched_ratings else 0
-        
+                if count > 0:
+                    dimension_vocal_count += count
+                    matched_ratings.extend(valid_match['Rating'].tolist())
+                    if '负面' in tag or '不满' in tag:
+                        avg_r = valid_match['Rating'].mean()
+                        hit_details.append(f"{tag.split('-')[-1]}({count}次/{round(avg_r,1)}⭐)")
+
+        # 优化3：机会指数鲁棒性优化
+        dim_rating = np.mean(matched_ratings) if matched_ratings else 0
         total_vocal = pos_score + neg_score
-        sentiment_score = round(pos_score / total_vocal * 100, 1) if total_vocal > 0 else 0
+        sentiment_score = (pos_score / total_vocal * 100) if total_vocal > 0 else 0
         
-        # --- 权威机会指数计算 (基于乘法效应) ---
-        # 公式：痛点数 * 不满意系数 * (5 - 维度评分)
-        # 这样评分越低、痛点越多的竞品维度，得分越高
-        opp_index = round(neg_score * (100 - sentiment_score) * (5.1 - dim_rating) / 100, 2)
+        # 引入置信度系数：样本量的对数缩放
+        # 避免只有 1-2 条评论时产生极高的机会指数
+        confidence = np.log1p(dimension_vocal_count) / np.log1p(total_reviews_count / 5) 
+        confidence = min(max(confidence, 0.5), 1.2) # 限制在 0.5-1.2 之间
         
+        raw_opp_index = neg_score * (100 - sentiment_score) * (5.1 - dim_rating) / 100
+        opp_index = round(raw_opp_index * confidence, 2)
+
         results.append({
             "维度": category,
-            "亮点": pos_score,
-            "痛点": neg_score,
-            "满意度": sentiment_score,
-            "维度评分": dim_rating,
-            "机会指数": opp_index, # 这里的指数越高，越是竞品死穴
+            "亮点": int(pos_score),
+            "痛点": int(neg_score),
+            "满意度": round(sentiment_score, 1),
+            "维度评分": round(dim_rating, 2),
+            "机会指数": opp_index,
             "痛点分布": ", ".join(hit_details) if hit_details else "无"
         })
+        
     return pd.DataFrame(results)
 
 # --- 4. Streamlit 页面布局 ---
@@ -445,7 +480,28 @@ if not df.empty:
         m3.metric("整体健康度", f"{health_rate}%")
         m4.metric("平均星级评分", f"{avg_star} ⭐")
 
-# --- 优化后的中间图表部分：柱状图 + 满意度折线 ---
+        # 💡 新增：维度雷达图
+        st.write("")
+        col_radar, col_spacer = st.columns([2, 1]) # 让雷达图稍微靠左
+        with col_radar:
+            fig_radar = go.Figure()
+            # 建议使用维度评分或满意度作为雷达半径
+            fig_radar.add_trace(go.Scatterpolar(
+                r=analysis_res['满意度'].tolist(),
+                theta=analysis_res['维度'].tolist(),
+                fill='toself',
+                name='满意度 %',
+                line_color='#3498db'
+            ))
+            fig_radar.update_layout(
+                polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+                showlegend=False,
+                title=f"【{sub_name}】维度健康度雷达图 (越往中心缩进说明痛点越多)",
+                height=400
+            )
+            st.plotly_chart(fig_radar, use_container_width=True)
+
+        # --- 优化后的中间图表部分：柱状图 + 满意度折线 ---
         import plotly.graph_objects as go
         from plotly.subplots import make_subplots
 
@@ -541,49 +597,81 @@ if not df.empty:
         else:
             st.success("✨ 所有维度表现良好，满意度均在 60% 以上！")
 
-        # --- 7. 用户原声词云分析 (Customer Voice Focus) ---
+        # --- 7. 用户原声词云分析 (优化版：降噪 + 词组强化) ---
         st.markdown("---")
         st.markdown("### ☁️ 用户原声高频词组")
         
         from wordcloud import WordCloud, STOPWORDS
         import matplotlib.pyplot as plt
 
-        # 1. 汇总当前子类下的所有英文评论
+        # 1. 汇总文本
         all_text = " ".join(sub_df['review_content'].astype(str).tolist())
 
-        if len(all_text) > 10:
-            # 2. 设置深度降噪停用词 (排除无意义的虚词和类目词)
+        if len(all_text) > 20:
+            # 2. 深度过滤 (借鉴同事代码去噪思想)
             eng_stopwords = set(STOPWORDS)
             custom_garbage = {
                 'marker', 'markers', 'pen', 'pens', 'product', 'really', 'will', 
                 'bought', 'set', 'get', 'much', 'even', 'color', 'paint', 'colors',
-                'work', 'good', 'great', 'love', 'used', 'using', 'actually'
+                'work', 'good', 'great', 'love', 'used', 'using', 'actually', 'amazon',
             }
             eng_stopwords.update(custom_garbage)
 
-            # 3. 配置并生成词云 (开启 collocations 提取词组)
+            # 💡 优化点：手动拼接词组，让词组在云图中更巨大
+            # 逻辑：提取词组后重复拼入文本，增加其词频权重
+            wc_gen = WordCloud(stopwords=eng_stopwords, collocations=True)
+            # 获取词组频率字典
+            word_freqs = wc_gen.process_text(all_text)
+            
+            # 3. 渲染
             wc = WordCloud(
-                width=1000, 
-                height=450,
+                width=1000, height=450,
                 background_color='white',
-                stopwords=eng_stopwords,
-                colormap='viridis', 
-                max_words=80,      # 适当减少词数，增加词组的可见度
-                collocations=True,  # 开启词组匹配，如 "dry out", "easy use"
-                random_state=42
-            ).generate(all_text)
+                colormap='coolwarm', # 切换配色方案，冷暖色代表情感对比
+                max_words=60,
+                min_font_size=12,
+                prefer_horizontal=0.7 # 增加水平显示的词，方便阅读
+            ).generate_from_frequencies(word_freqs)
 
-            # 4. 使用 Matplotlib 渲染并展示到 Streamlit
             fig_wc, ax_wc = plt.subplots(figsize=(12, 6))
             ax_wc.imshow(wc, interpolation='bilinear')
             ax_wc.axis("off")
-            plt.tight_layout(pad=0)
-            
-            # 使用唯一 key 避免多图冲突
             st.pyplot(fig_wc, clear_figure=True)
-            plt.close(fig_wc) # 释放内存
+            plt.close(fig_wc)
         else:
             st.info("💡 样本量不足以生成词云。")
+                
+        # --- 8. 原声溯源 (Truth Laboratory) ---
+        st.write("")
+        with st.expander(f"🔍 深度探查：{sub_name} 的真实用户评价回溯"):
+            # 选择维度
+            target_dim = st.selectbox("选择想要探查的痛点维度:", analysis_res['维度'].tolist(), key=f"sel_{sub_name}")
+            
+            # 提取该维度的负面关键词
+            neg_keywords = []
+            for tag, keys in FEATURE_DIC[target_dim].items():
+                if '负面' in tag or '不满' in tag:
+                    neg_keywords.extend(keys)
+            
+            # 搜索包含这些词的评价
+            if neg_keywords:
+                search_pattern = '|'.join([re.escape(k) for k in neg_keywords])
+                # 过滤出低分评论 (Rating <= 3) 且 包含负面词
+                vocal_df = sub_df[
+                    (sub_df['Rating'] <= 3) & 
+                    (sub_df['review_content'].str.contains(search_pattern, na=False, flags=re.IGNORECASE))
+                ][['Rating', 'review_content']].head(10)
+                
+                if not vocal_df.empty:
+                    st.warning(f"以下是用户在【{target_dim}】维度的真实痛点原声：")
+                    # 美化表格显示
+                    for _, row in vocal_df.iterrows():
+                        st.markdown(f"**[{row['Rating']}⭐]** {row['review_content']}")
+                        st.divider()
+                else:
+                    st.info("该维度下暂未捕捉到高代表性的负面原声评价。")
+            else:
+                st.write("该维度暂无定义的负面关键词。")
         
 
 else:
