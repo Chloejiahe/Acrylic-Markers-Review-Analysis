@@ -1,5 +1,8 @@
 streamlit
 pandas
-plotly
 openpyxl
+plotly
+textblob
+nltk
+matplotlib
 wordcloud
