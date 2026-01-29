@@ -689,8 +689,8 @@ if not df.empty:
                             # 使用 Markdown 美化显示，s_text 是拆分后的短句
                             st.markdown(f"**[{row['Rating']}⭐]** {row['s_text']}")
                             st.divider()
-                else:
-                    st.info("该维度下暂未捕捉到高代表性的负面原声评价。")
+                    else:
+                        st.info("该维度下暂未捕捉到高代表性的负面原声评价。")
             else:
                 st.write("该维度暂无定义的负面关键词。")
         
