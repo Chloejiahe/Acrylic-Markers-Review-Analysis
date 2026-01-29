@@ -741,8 +741,10 @@ if not df.empty:
                     
                     if not vocal_df.empty:
                         st.warning(f"以下是用户在【{target_dim}】维度的真实痛点原声：")
-                        for _, row in vocal_df.iterrows():
-                            st.markdown(f"**[{row['Rating']}⭐]** {row['s_text']}")
+                        for i, (_, row) in enumerate(vocal_df.iterrows()): # 改成带 i 的循环
+                            # 加上唯一的 key
+                            st.markdown(f"**[{row['Rating']}⭐]** {row['s_text']}", 
+                                        key=f"vocal_text_{sub_name}_{target_dim}_{i}")
                             st.divider()
                     else:
                         st.info("该维度下暂未捕捉到高代表性的负面原声评价。")
