@@ -378,7 +378,139 @@ FEATURE_DIC = {
         }
 }
 
-# --- 2. 数据加载函数 (修复 Missing load_raw_data 错误) ---
+# --- 2. 产品分类映射 (Product & Category Mapping) ---
+USER_CATEGORY_MAPPING = {
+    'B0CP48VPSQ': 'Multicolor36-fine+dot-LowPrice',
+    'B09VCYS41G': 'Multicolor24-fine+dot-LowPrice',
+    'B0CP48JPCH': 'Multicolor24-fine+dot-LowPrice',
+    'B0F2JLC1TM': 'White5-fine+dot-LowPrice',
+    'B0D6YFT1GJ': 'Multicolor96+Metallic24-fine+brush-LowPrice',
+    'B0CXJ1TNV1': 'Multicolor24-fine+brush-LowPrice',
+    'B0DFY9JBDR': 'Multicolor72-fine+brush-LowPrice',
+    'B07Z86PHP8': 'Multicolor8-medium-HighPrice',
+    'B0CQ88G8WW': 'Multicolor48-fine+brush-LowPrice',
+    'B0C3J7JQ3N': 'MetallicGold2-extrafine-HighPrice',
+    'B0DHCLZDN9': 'Multicolor8-medium-MidPrice',
+    'B0C61HTPV9': 'Multicolor24-medium-MidPrice',
+    'B07X1QH66Q': 'Metallic12-medium-MidPrice',
+    'B0F6LC4JPC': 'Multicolor24-medium+brush-MidPrice',
+    'B0DFW29DP9': 'Multicolor48-brush-MidPrice',
+    'B0C2VMF582': 'White5-jumbo-HighPrice',
+    'B07JLMKC91': 'Multicolor32-extrafine-MidPrice',
+    'B0BQDCG4WP': 'Multicolor12-fine+chisel-MidPrice',
+    'B08BNJJ5B7': 'Glitter12-medium-MidPrice',
+    'B0CZ8B4ZZR': 'Multicolor10-jumbo-HighPrice',
+    'B0CMQZNGK7': 'Multicolor16-medium-HighPrice',
+    'B0F7L6VLXH': 'Multicolor36-brush-MidPrice',
+    'B0DZN8RNB3': 'Multicolor240-brush-LowPrice',
+    'B06ZYTZXG2': 'Multicolor24-fine-MidPrice',
+    'B071DHGPBP': 'Multicolor21-extrafine-HighPrice',
+    'B06ZYKRQJQ': 'Multicolor29-medium-HighPrice',
+    'B0CPMTDYVB': 'Multicolor12-brush-MidPrice',
+    'B0793F295W': 'Multicolor15-extrafine-LowPrice',
+    'B0FHW81VK5': 'Multicolor240-brush-LowPrice',
+    'B0DPW68PPJ': 'Multicolor18-brush-MidPrice',
+    'B0F9PKH91N': 'Multicolor12-fine+brush-LowPrice',
+}
+
+# --- 3. 消费者用户画像 ---
+CLASSIFICATION_RULES = {
+        "User_Role": {
+          '专业艺术工作者 (Professional Artist)': ['professional artist', 'pro artist', 'artist', 'illustrator', 'designer', 'comic artist', 'manga artist', 'architect', 'art studio', 'in my studio', 'commission', 'client work', 'freelance artist', 'professional work'],
+          '学生 (Student)': ['student', 'school', 'college', 'university', 'art student', 'design student', 'for class', 'in my class','class notes', 'study notes', 'school project', 'assignment', 'textbook', 'studying for'],
+          '教师 (Teacher)': ['teacher', 'educator', 'professor', 'art teacher', 'instructor', 'for my classroom','teaching a class', 'grading papers', 'school supplies for my students'],
+          '父母 (Parent)': ['parent', 'mom', 'dad', 'mother', 'father', 'for my kids', 'for my son', 'for my daughter', 'family craft', 'homeschooling', 'with my kids'],
+          '手账爱好者 (Journaler/Planner)': ['journaling', 'in my journal', 'art journal', 'junk journal', 'bible journaling','decorating my planner', 'in my planner',
+                             'setting up my planner', 'planner decoration', 'planner stickers', 'planner layout','bujo', 'bullet journal',
+                             'bujo spread','in my diary','scrapbooking', 'scrapbook layout', 'making a scrapbook','memory keeping', 'memory planner',
+                             'hobonichi', 'leuchtturm', 'traveler\'s notebook','washi tape', 'journal stickers'
+                            ],
+          '业余艺术爱好者 (Hobbyist)': ['hobbyist', 'amateur artist', 'as a hobby', 'just a hobby', 'passion project', 'in my spare time', 'self-taught artist', 'just for fun', 'drawing for fun',  'painting for fun', 'my favorite pastime', 'weekend artist', 'doodling for fun','sketching in my free time', 'not a professional', 'not an artist but', 'art as a hobby'],
+          '文化创意从业者 (Creative Professional)': ['creative professional', 'artisan', 'craft market', 'craft fair', 'artisan market','etsy seller', 'selling on etsy',
+                                 'my etsy shop', 'small business owner', 'selling my art','content creator', 'youtuber', 'instagram artist', 'patreon creator', 'twitch streamer', 'art blogger',
+                                 'workshop host', 'skillshare teacher', 'art instructor', 'leading a workshop'
+                                 ],
+          '初学者 (Beginner)': ['beginner', 'newbie', 'novice', 'beginner friendly', 'good for beginners', 'easy for a beginner','just starting', 'just starting out', 'getting started', 'great starting point',
+                       'starter kit', 'starter set', 'my first set',  'new to art', 'new to painting', 'new to drawing', 'first time trying',
+                      'learning to draw', 'learning to paint', 'easy to learn with', 'no prior experience'
+                      ],
+          '办公人士 (Business/Office Professional)': ['for the office', 'at my office', 'office supplies', 'office work', 'at work', 'for my business','business meeting', 'work presentation', 'meeting notes', 'mind mapping for work', 'whiteboard at work',
+                                  'corporate training', 'coworker', 'official report', 'signing documents', 'desk organization', 'organizing my desk'
+                                 ],
+          '艺术疗愈/健康追求者 (Art Therapy/Wellness Seeker)': ['art therapy', 'therapeutic', 'for relaxation', 'to relax', 'calming activity', 'for mindfulness',
+                                       'helps with my anxiety', 'stress relief', 'to unwind', 'for my mental health', 'self-care activity',
+                                        'peaceful activity', 'meditative drawing', 'helps me escape', 'clears my head', 'zone out',
+                                        'calms me down', 'relaxing hobby', 'de-stress'
+                                      ],
+          '机构/批量采购者 (Institutional/Bulk Purchaser)': ['bulk order', 'bulk purchase', 'large order', 'large quantity',  'for the whole class', 'for my classroom', 'classroom set', 'school supplies order','for the office', 'office supply order', 'stocking the office', 'office set','church group', 'for the church', 'community center', 'non-profit', 'for our team', 'event supplies', 'charity donation', 'donation for',
+                                      'stock up for the office', 'stock up for the classroom'],
+          },
+
+        "Gender": {
+            '女性 (Female)': ['woman', 'women', 'girl', 'girls', 'she','niece','her','hers', 'wife', 'mother', 'mom', 'daughter', 'girlfriend', 'female', 'sister', 'aunt', 'grandmother', 'niece', 'lady', 'ladies'],
+            '男性 (Male)': ['man', 'men', 'nephew','boy', 'boys', 'he', 'his', 'him', 'husband', 'father', 'dad', 'son', 'boyfriend', 'male', 'brother', 'uncle', 'grandfather', 'nephew', 'gentleman']
+        },
+        "Age_Group": {
+            '儿童 (Child)': ['kid', 'kids', 'child', 'children', 'toddler', 'baby', 'preschooler', 'little one', 'for my son', 'for my daughter', 'grandson', 'granddaughter','niece','nephew'],
+            '青少年 (Teenager)': ['teen', 'teenager', 'adolescent', 'youth', 'high school', 'college student', 'university student'],
+            '老年人 (Senior)': ['senior', 'elderly', 'retired', 'grandparent', 'grandfather', 'grandmother', 'golden years']
+        },
+        "Usage": {
+            '填色本填色 (Coloring Book)': ['coloring book', 'coloring books', 'adult coloring', 'colouring book', 'color page', 'coloring pages',  'adult coloring book', 'color therapy', 'mindfulness coloring', 'relaxing coloring', 'intricate coloring', 'detailed coloring', 'secret garden', 'johanna basford', 'kerby rosanes', 'hanna karlzon', 'mandalas', 'mandala coloring', 'color by number', 'mystery coloring'],
+            '书法与手写艺术 (Calligraphy & Hand Lettering)': ['calligraphy', 'lettering', 'hand lettering', 'typography', 'modern calligraphy', 'brush lettering', 'faux calligraphy', 'handlettering', 'scripting', 'pointed pen', 'envelope addressing', 'flourishing', 'copperplate script', 'spencerian script', 'journal headers', 'planner headers',  'writing letters', 'place cards', 'wedding invitations'],
+            '绘画创作 (Art Creation)': ['making art', 'creating art', 'for my art', 'art project', 'fine art', 'for a drawing', 'for drawing',  'illustration', 'manga', 'comic art',
+                            'landscape sketch', 'urban sketching', 'artwork', 'portrait drawing',  'character design', 'sketching', 'botanical illustration', 'still life', 'figure drawing',
+                            'plein air painting', 'doodling for art', 'zentangle art', 'watercolor painting', 'acrylic painting', 'inking lines', 'animal drawing', 'concept art'
+            ],
+            '设计工作 (Design Work)': ['design work', 'for my design work', 'professional design', 'client design', 'design project','fashion design', 'fashion illustration', 'garment design', 'textile design',
+                           'product design', 'industrial design', 'product sketch', 'rendering', 'graphic design', 'logo design', 'layout design', 'branding', 'ui design', 'ux design', 'wireframing', 'mockup','architecture',
+                          'architectural drawing', 'interior design', 'floor plan', 'blueprint', 'schematics','concept art', 'character design', 'storyboard', 'set design'
+            ],
+            '教学与学习 (Teaching & Learning)': ['art class', 'craft class', 'art school', 'for my students', 'for the class', 'classroom supplies','student work', 'school project', 'class assignment', 'grading papers', 'lesson planning', 'teaching a class', 'art education', 'homeschooling', 'learning to draw', 'learning to paint', 'skillshare class', 'online course', 'art tutorial',  'following a tutorial', 'art demonstration'],
+            '手账装饰 (Journal & Planner Decoration)': ['note taking', 'taking notes', 'study notes', 'meeting notes', 'class notes', 'annotating books',  'marking up documents', 'color coding', 'color code my notes', 'organizing my calendar', 'calendar planning', 'labeling', 'making labels', 'organizing files', 'to-do list',
+                                     'making lists', 'grocery list', 'keeping track of'],
+            '日常记录与组织 (Daily Organization)': ['note taking', 'taking notes', 'study notes', 'meeting notes', 'class notes', 'annotating books',  'marking up documents', 'color coding', 'color code my notes', 'organizing my calendar', 'calendar planning', 'labeling', 'making labels', 'organizing files', 'to-do list',
+                                  'making lists', 'grocery list', 'keeping track of'],
+            '卡片与礼品制作 (Card & Gift Making)': ['card making', 'greeting card', 'handmade card', 'gift tag', 'decorating gifts',  'making cards', 'birthday card', 'christmas cards', 'thank you card', 'thank you notes', 'wedding invitations', 'anniversary card', 'valentines card', 'personalizing gifts',  'custom gifts', 'wrapping paper', 'gift wrap', 'envelope addressing', 'sentiments for cards'],
+            '儿童涂鸦与早教 (Kids Activities)': ['for my kids', 'for the kids', 'with my children', 'for my toddler', 'for my son', 'for my daughter', 'kids craft', 'crafts for kids', 'family craft time', 'family fun', 'art project for kids', 'doodling', 'scribbling', 'finger painting', 'mess-free coloring','early learning', 'educational toy', 'learning colors', 'develop fine motor skills', 'preschool activities',
+                               'safe for children', 'kid friendly', 'rainy day activity'],
+            'DIY与手工制作 (DIY & Crafts)': ['diy project', 'craft project', 'crafting', 'for crafts', 'arts and crafts', 'handmade gifts','decorating ornaments', 'customizing shoes', 'phone case decoration', 'painting pumpkins', 'easter egg decorating', 'on glass', 'on t-shirt', 'on fabric', 'on plastic', 'on metal', 'model painting', 'miniature painting', 'painting miniatures', 'warhammer painting', 'model building',  'customizing', 'rock painting', 'mug decoration', 'wood burning', 'wood signs', 'wood crafts', 'resin art', 'resin crafts', 'polymer clay crafts', 'jewelry making', 'candle making', 'wreath making'],
+            '户外与旅行创作 (Outdoor & Travel Art)': ['outdoor drawing', 'en plein air', 'urban sketching', 'travel journal', 'traveling with', 'on the go', 'field sketch','portable for travel'],
+            '收藏与展示 (Collection & Display)': ['add to my collection', 'complete my collection', 'collector', 'collector\'s item', 'limited edition', 'special edition', 'collectible set', 'complete the set', 'the whole set', 'full set', 'for display', 'on my shelf'],
+            '文化体验与活动 (Cultural Activities)': ['workshop', 'art event', 'cultural festival', 'live drawing', 'art therapy session', 'community art'],
+            '心理疗愈 (Therapeutic Use)': ['for relaxing', 'for relaxation', 'stress relief', 'art therapy', 'therapeutic', 'calming', 'for mindfulness','emotional outlet', 'doodling to relax', 'zen', 'to unwind']
+        },
+        "Motivation": {
+            '专业需求-色彩表现': ['high quality pigment', 'high pigment load', 'richly pigmented', 'pure pigment', 'vibrant colors', 'rich colors', 'deep saturation', 'consistent saturation', 'intense colors','lightfast', 'excellent lightfastness', 'lightfastness rating', 'archival quality', 'archival ink', 'museum quality','smooth blending', 'blends seamlessly', 'layering without getting muddy', 'excellent blendability', 'good for glazing', 'lifts cleanly', 'non-staining', 'good staining properties','true to color', 'color accuracy', 'good opacity', 'opaque coverage', 'good transparency'],
+            '专业需求-性能耐用': ['pro grade', 'professional grade', 'reliable for work', 'consistent flow', 'consistent performance', 'durable tip', 'long lasting', 'for professional work', 'serious tool', 'heavy duty', 'withstand pressure', 'workhorse', 'built to last', 'daily driver', 'holds up to heavy use',  'no skipping', 'dependable performance', 'withstands abuse', 'for demanding work'],
+            '基础功能需求': ['for basic use', 'for everyday use', 'for daily use', 'for school', 'for taking notes', 'gets the job done', 'does the job', 'all i need', 'nothing fancy', 'just the basics', 'no frills', 'simple and effective', 'standard use', 'for general use'],
+            '艺术兴趣驱动': ['for my hobby', 'passion for art', 'spark creativity', 'express myself', 'for fun', 'artistic exploration','wanted to try', 'get back into art','for hobby'],
+            '品牌信任': [ 'trusted brand', 'good reputation', 'well-known brand', 'always reliable', 'go-to brand', 'love this brand','stick with this brand', 'brand loyalty',],
+            '性价比驱动': [ 'good value', 'great price', 'affordable', 'on a budget', 'good deal', 'cheap but good', 'cost effective', 'cheaper alternative'],
+            '创新功能吸引': ['innovative feature', 'new feature',  'unique feature', 'special feature','new technology'],
+            '外观设计吸引': ['love the design', 'beautiful aesthetic', 'looks good', 'pretty colors', 'minimalist design', 'the look of it', 'elegant design'],
+            '包装与开箱体验吸引': ['beautiful packaging', 'great unboxing experience', 'giftable', 'nice box', 'good presentation'],
+            '社交驱动-口碑推荐': ['recommendation', 'recommended by', 'my friend recommended', 'my teacher recommended', 'word of mouth', 'told me to buy','saw good reviews'],
+            '社交驱动-媒体影响': ['saw it on social media', 'tiktok made me buy it', 'saw it on instagram', 'youtube review', 'influencer recommended'],
+            '文化与身份认同': ['culture', 'themed set', 'limited edition', 'collaboration', 'artist series', 'collectible', 'part of my identity'],
+            '便携性需求': ['portable', 'on the go', 'easy to carry', 'travel set', 'compact', 'lightweight','great for travel', 'perfect for travel', 'traveling with', 'take it anywhere',  'fits in my bag', 'fits in my pocket', 'small size', 'doesn\'t take up much space','comes with a travel case', 'nice travel case'],
+            '多功能性需求': ['multi-purpose', 'all-in-one', 'jack of all trades', 'works for everything', 'use it for everything', 'handles a variety of tasks', 'works on multiple surfaces','good for many things', 'one set for all my needs','many surface'],
+            '礼品需求': [ 'as a gift', 'for a present', 'gift for someone', 'birthday gift', 'christmas gift', 'holiday gift','for gifts','for gift'],
+            '激发创造力': ['spark creativity', 'boost creativity', 'unleash creativity', 'explore my creativity', 'creative block', 'helps with creative block', 'overcome creative block', 'new ideas',  'get the creative juices flowing', 'makes me want to create', 'inspires me to create'],
+            '缓解压力与情绪调节': ['stress relief', 'for relaxation', 'to relax', 'calming', 'art therapy', 'therapeutic', 'for mindfulness', 'to unwind', 'zone out', 'peaceful activity', 'meditative', 'escape from reality', 'helps with my anxiety', 'calms me down', 'relaxing hobby'],
+            '满足好奇心': ['curious about', 'wanted to see', 'heard about', 'first impression', 'wanted to try',  'give it a try', 'out of curiosity', 'just to see', 'intrigued by', 'see what the hype is about', 'first time trying', 'wanted to check it out'],
+            '环保与可持续性': ['eco-friendly', 'sustainable', 'made from recycled materials', 'recycled plastic', 'recyclable', 'biodegradable', 'refillable', 'non-toxic', 'less waste', 'zero waste', 'earth-friendly',  'planet-friendly', 'good for the environment', 'environmentally friendly', 'plant-based ink', 'recyclable packaging'],
+            '支持特定文化': ['support local artist', 'support local brand', 'made by local artist', 'cultural collaboration',  'artist collaboration', 'support small business',  'national pride', 'traditional craft', 'heritage brand', 'artist series', 'indie brand'],
+            '追随潮流': ['trending on social media', 'all the hype', 'everyone has it', 'in style', 'viral', 'saw it on tiktok','tiktok','tiktok made me buy it', 'instagram made me buy it','instagram', 'all over youtube', 'influencer recommended', 'all the rage', 'latest trend', 'hyped up product'],
+            '效率驱动': ['more efficient', 'improves efficiency', 'quick drying', 'fast drying', 'dries instantly', 'fast-drying',  'saves me time', 'saves time', 'work faster', 'speeds up my process', 'improves my workflow', 'streamline my workflow', 'cuts down on time', 'hassle-free', 'get the job done faster'],
+            '学习新技能': ['learning a new skill', 'good for tutorials', 'starter kit', 'for beginners', 'beginner friendly',  'easy to learn', 'learning to draw',
+                    'learning calligraphy', 'want to learn', 'just starting out',  'new to art', 'first time trying', 'for practice', 'practicing my skills',
+                    'comes with instructions',  'step-by-step guide', 'improve my drawing', 'get better at painting'],
+            '提升现有技能': ['challenge myself', 'advanced techniques','better tool', 'step up my game','refine my skills', 'take my art to the next level', 'more control over lines','fine-tune my work', 'mastering the craft',  'invest in my art', 'for advanced users', 'expand my capabilities', 'unlock new techniques']
+        }
+}
+
+# --- 3. 数据加载函数---
 @st.cache_data
 def load_raw_data():
     data_map = {
@@ -423,7 +555,7 @@ def load_raw_data():
     
     return pd.concat(combined, ignore_index=True) if combined else pd.DataFrame()
 
-# --- 3. 核心分析逻辑 (优化版：引入评分加权与深度透视) ---
+# --- 4. 核心分析逻辑 (优化版：引入评分加权与深度透视) ---
 def analyze_sentiments(df_sub):
     results = []
     
@@ -497,7 +629,7 @@ def analyze_sentiments(df_sub):
         
     return pd.DataFrame(results)
 
-# --- 4. Streamlit 页面布局 ---
+# --- 5. Streamlit 页面布局 ---
 st.set_page_config(page_title="丙烯笔深度调研", layout="wide")
 st.title("🎨 丙烯马克笔消费者洞察看板")
 
