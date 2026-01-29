@@ -5,6 +5,8 @@ import streamlit as st
 from textblob import TextBlob
 import nltk
 from nltk.tokenize import sent_tokenize
+import plotly.graph_objects as go 
+from plotly.subplots import make_subplots
 
 # --- 必须添加的内容：资源初始化 ---
 def init_nltk_resources():
