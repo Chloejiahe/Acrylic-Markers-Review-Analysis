@@ -3,7 +3,21 @@ import numpy as np
 import os, re
 import streamlit as st
 from textblob import TextBlob
+import nltk
 from nltk.tokenize import sent_tokenize
+
+# --- 必须添加的内容：资源初始化 ---
+def init_nltk_resources():
+    resources = ['punkt', 'punkt_tab']
+    for res in resources:
+        try:
+            # 检查资源是否存在
+            nltk.data.find(f'tokenizers/{res}')
+        except LookupError:
+            # 不存在则下载
+            nltk.download(res)
+
+init_nltk_resources()
 
 # --- 1. 核心词库配置 (Feature Keywords) ---
 FEATURE_DIC = {
