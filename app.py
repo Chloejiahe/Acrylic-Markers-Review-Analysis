@@ -37,7 +37,7 @@ FEATURE_DIC = {
             },
         '色彩一致性': {
             '正面-颜色准确': ['true to color', 'match the cap', 'accurate color', 'color accuracy', 'exact color', 'matches perfectly', 'consistent color', 'consistency'],
-            '负面-颜色偏差': ['inconsistent', 'different shade', 'not the same', 'misleading cap', 'cap is wrong', 'color is off', 'darker than cap', 'lighter than cap', "doesn't match", 'wrong color'],
+            '负面-颜色偏差': ['color doesn\'t match', 'shade doesn\'t match', 'misleading cap color', 'wrong cap color', 'color is off', 'darker than cap', 'lighter than cap', 'wrong color', 'color different', 'shade is different'],
             '正面-设计-颜色准确 (VS 笔帽)': ['true to color', 'match the cap', 'matches the cap perfectly', 'cap is a perfect match', 'cap is accurate'],
             '负面-设计-颜色误导 (VS 笔帽)': ['misleading cap', 'cap is wrong', 'cap is a lie', "color doesn't match the barrel", 'the cap color is way off', 'nothing like the cap'],
             '正面-营销-颜色准确(VS 网图)': ['exactly as advertised', 'what you see is what you get', 'matches the online photo', 'true to the swatch', 'photo is accurate'],
