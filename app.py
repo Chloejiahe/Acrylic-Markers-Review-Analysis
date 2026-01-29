@@ -381,14 +381,14 @@ FEATURE_DIC = {
 # 词云绘图缓存函数
 @st.cache_data
 def get_wc_image_array(word_freqs):
-    """将词云生成逻辑缓存，避免 React 在 Rerun 时找不到节点"""
     if not word_freqs:
         return None
     wc = WordCloud(
         width=1000, height=450,
         background_color='white',
         colormap='coolwarm', 
-        max_words=60
+        max_words=60,
+        random_state=79
     ).generate_from_frequencies(word_freqs)
     return wc.to_array()
 
