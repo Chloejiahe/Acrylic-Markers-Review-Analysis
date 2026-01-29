@@ -378,6 +378,20 @@ FEATURE_DIC = {
         }
 }
 
+# 词云绘图缓存函数
+@st.cache_data
+def get_wc_image_array(word_freqs):
+    """将词云生成逻辑缓存，避免 React 在 Rerun 时找不到节点"""
+    if not word_freqs:
+        return None
+    wc = WordCloud(
+        width=1000, height=450,
+        background_color='white',
+        colormap='coolwarm', 
+        max_words=60
+    ).generate_from_frequencies(word_freqs)
+    return wc.to_array()
+
 # --- 2. 数据加载函数 (修复 Missing load_raw_data 错误) ---
 @st.cache_data
 def load_raw_data():
@@ -667,43 +681,33 @@ if not df.empty:
         else:
             st.success("✨ 所有维度表现良好，满意度均在 60% 以上！")
 
-        # --- 7. 用户原声词云分析 (优化版：降噪 + 词组强化) ---
+        # --- 7. 用户原声词云分析 (缓存加速 + 防崩版) ---
         st.markdown("---")
         st.markdown("### ☁️ 用户原声高频词组")
     
-        # 1. 汇总文本
         all_text = " ".join(sub_df['s_text'].astype(str).tolist())
 
         if len(all_text) > 20:
-            # 2. 深度过滤 (借鉴同事代码去噪思想)
+            # 1. 词频计算 (这部分很快)
             eng_stopwords = set(STOPWORDS)
-            custom_garbage = {
-                'marker', 'markers', 'pen', 'pens', 'product', 'really', 'will', 
-                'bought', 'set', 'get', 'much', 'even', 'color', 'paint', 'colors',
-                'work', 'good', 'great', 'love', 'used', 'using', 'actually', 'amazon',
-            }
+            custom_garbage = {'marker', 'markers', 'pen', 'pens', 'product', 'really', 'will', 'bought', 'set', 'get', 'much', 'even', 'color', 'paint', 'colors', 'work', 'good', 'great', 'love', 'used', 'using', 'actually', 'amazon', 'br'}
             eng_stopwords.update(custom_garbage)
 
-            # 💡 优化点：手动拼接词组，让词组在云图中更巨大
-            # 逻辑：提取词组后重复拼入文本，增加其词频权重
             wc_gen = WordCloud(stopwords=eng_stopwords, collocations=True)
             word_freqs = wc_gen.process_text(all_text)
             
-            wc = WordCloud(
-                width=1000, height=450,
-                background_color='white',
-                colormap='coolwarm', 
-                max_words=60
-            ).generate_from_frequencies(word_freqs)
+            # 2. 调用上方新增的缓存函数获取图像数组
+            img_array = get_wc_image_array(word_freqs)
 
-            # 修正：显式创建 fig 并使用 st.pyplot(fig)
-            fig_wc, ax_wc = plt.subplots(figsize=(12, 6))
-            ax_wc.imshow(wc, interpolation='bilinear')
-            ax_wc.axis("off")
-            
-            # 使用唯一 key 并显式清除
-            st.pyplot(fig_wc, clear_figure=True)
-            plt.close(fig_wc) # 必须关闭！
+            # 3. 渲染图片
+            if img_array is not None:
+                fig_wc, ax_wc = plt.subplots(figsize=(12, 6))
+                ax_wc.imshow(img_array, interpolation='bilinear')
+                ax_wc.axis("off")
+                
+                # 💡 关键：使用唯一 key 并通过 sub_name 隔离，防止不同子类间冲突
+                st.pyplot(fig_wc, clear_figure=True, key=f"wc_plot_{sub_name}")
+                plt.close(fig_wc) 
         else:
             st.info("💡 样本量不足以生成词云。")
                 
