@@ -378,20 +378,6 @@ FEATURE_DIC = {
         }
 }
 
-# 词云绘图缓存函数
-@st.cache_data
-def get_wc_image_array(word_freqs):
-    if not word_freqs:
-        return None
-    wc = WordCloud(
-        width=1000, height=450,
-        background_color='white',
-        colormap='coolwarm', 
-        max_words=60,
-        random_state=79
-    ).generate_from_frequencies(word_freqs)
-    return wc.to_array()
-
 # --- 2. 数据加载函数 (修复 Missing load_raw_data 错误) ---
 @st.cache_data
 def load_raw_data():
@@ -681,33 +667,31 @@ if not df.empty:
         else:
             st.success("✨ 所有维度表现良好，满意度均在 60% 以上！")
 
-        # --- 7. 用户原声词云分析 (缓存加速 + 防崩版) ---
+        # --- 7. 用户原声词云分析 (精简版) ---
         st.markdown("---")
         st.markdown("### ☁️ 用户原声高频词组")
     
         all_text = " ".join(sub_df['s_text'].astype(str).tolist())
 
         if len(all_text) > 20:
-            # 1. 词频计算 (这部分很快)
+            # 直接在此处配置词云，省去调用外部函数的开销
             eng_stopwords = set(STOPWORDS)
             custom_garbage = {'marker', 'markers', 'pen', 'pens', 'product', 'really', 'will', 'bought', 'set', 'get', 'much', 'even', 'color', 'paint', 'colors', 'work', 'good', 'great', 'love', 'used', 'using', 'actually', 'amazon', 'br'}
             eng_stopwords.update(custom_garbage)
 
-            wc_gen = WordCloud(stopwords=eng_stopwords, collocations=True)
-            word_freqs = wc_gen.process_text(all_text)
-            
-            # 2. 调用上方新增的缓存函数获取图像数组
-            img_array = get_wc_image_array(word_freqs)
+            # 生成词云对象
+            wc = WordCloud(
+                width=1000, height=450,
+                background_color='white',
+                colormap='coolwarm', 
+                max_words=60,
+                random_state=79,
+                stopwords=eng_stopwords,
+                collocations=True
+            ).generate(all_text) # 直接 generate 比 process_text 更快更省事
 
-            # 3. 渲染图片
-            if img_array is not None:
-                fig_wc, ax_wc = plt.subplots(figsize=(12, 6))
-                ax_wc.imshow(img_array, interpolation='bilinear')
-                ax_wc.axis("off")
-                
-                # 💡 关键：使用唯一 key 并通过 sub_name 隔离，防止不同子类间冲突
-                st.pyplot(fig_wc, clear_figure=True, key=f"wc_plot_{sub_name}")
-                plt.close(fig_wc) 
+            st.image(wc.to_array(), use_container_width=True)
+            
         else:
             st.info("💡 样本量不足以生成词云。")
                 
