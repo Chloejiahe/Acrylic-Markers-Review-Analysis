@@ -571,7 +571,7 @@ if not df.empty:
                 title=f"【{sub_name}】维度健康度雷达图 (越往中心缩进说明痛点越多)",
                 height=400
             )
-            st.plotly_chart(fig_radar, use_container_width=True)
+            st.plotly_chart(fig_radar, use_container_width=True, key=f"radar_{sub_name}")
 
         # --- 优化后的中间图表部分：柱状图 + 满意度折线 ---
 
@@ -687,51 +687,49 @@ if not df.empty:
             # 💡 优化点：手动拼接词组，让词组在云图中更巨大
             # 逻辑：提取词组后重复拼入文本，增加其词频权重
             wc_gen = WordCloud(stopwords=eng_stopwords, collocations=True)
-            # 获取词组频率字典
             word_freqs = wc_gen.process_text(all_text)
             
-            # 3. 渲染
             wc = WordCloud(
                 width=1000, height=450,
                 background_color='white',
-                colormap='coolwarm', # 切换配色方案，冷暖色代表情感对比
-                max_words=60,
-                min_font_size=12,
-                prefer_horizontal=0.7 # 增加水平显示的词，方便阅读
+                colormap='coolwarm', 
+                max_words=60
             ).generate_from_frequencies(word_freqs)
 
+            # 修正：显式创建 fig 并使用 st.pyplot(fig)
             fig_wc, ax_wc = plt.subplots(figsize=(12, 6))
             ax_wc.imshow(wc, interpolation='bilinear')
             ax_wc.axis("off")
+            
+            # 使用唯一 key 并显式清除
             st.pyplot(fig_wc, clear_figure=True)
-            plt.close(fig_wc)
+            plt.close(fig_wc) # 必须关闭！
         else:
             st.info("💡 样本量不足以生成词云。")
                 
         # --- 8. 原声溯源 (Truth Laboratory) ---
         st.write("")
         with st.expander(f"🔍 深度探查：{sub_name} 的真实用户评价回溯"):
-            # 选择维度
-            target_dim = st.selectbox("选择想要探查的痛点维度:", analysis_res['维度'].tolist(), key=f"sel_{sub_name}")
+            # 加上 key
+            target_dim = st.selectbox(
+                "选择想要探查的痛点维度:", 
+                analysis_res['维度'].tolist(), 
+                key=f"select_dim_{sub_name}"
+            )
             
-            # 提取该维度的负面关键词
+            # ... 提取关键词部分 ...
             neg_keywords = []
-            for tag, keys in FEATURE_DIC[target_dim].items():
-                if '负面' in tag or '不满' in tag:
-                    neg_keywords.extend(keys)
+            if target_dim in FEATURE_DIC: # 增加安全检查
+                for tag, keys in FEATURE_DIC[target_dim].items():
+                    if '负面' in tag or '不满' in tag:
+                        neg_keywords.extend(keys)
             
-            # 搜索包含这些词的评价
             if neg_keywords:
-                # 过滤掉空字符串并转义，防止正则错误
                 valid_keys = [re.escape(k) for k in neg_keywords if k.strip()]
-                
                 if not valid_keys:
-                    st.info("该维度暂无定义的有效负面关键词。")
+                    st.info("该维度暂无有效的负面关键词。")
                 else:
                     search_pattern = '|'.join(valid_keys)
-                    
-                    # 这里的 review_content 已统一修改为 s_text
-                    # 使用 drop_duplicates() 防止同一句拆分后重复显示
                     vocal_df = sub_df[
                         (sub_df['Rating'] <= 3) & 
                         (sub_df['s_text'].str.contains(search_pattern, na=False, flags=re.IGNORECASE))
@@ -740,12 +738,12 @@ if not df.empty:
                     if not vocal_df.empty:
                         st.warning(f"以下是用户在【{target_dim}】维度的真实痛点原声：")
                         for _, row in vocal_df.iterrows():
-                            # 使用 Markdown 美化显示，s_text 是拆分后的短句
                             st.markdown(f"**[{row['Rating']}⭐]** {row['s_text']}")
                             st.divider()
                     else:
                         st.info("该维度下暂未捕捉到高代表性的负面原声评价。")
             else:
+                # 确保这个 else 与 if neg_keywords: 对齐
                 st.write("该维度暂无定义的负面关键词。")
         
 
