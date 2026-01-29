@@ -7,6 +7,8 @@ import nltk
 from nltk.tokenize import sent_tokenize
 import plotly.graph_objects as go 
 from plotly.subplots import make_subplots
+from wordcloud import WordCloud, STOPWORDS
+import matplotlib.pyplot as plt
 
 # --- 必须添加的内容：资源初始化 ---
 def init_nltk_resources():
@@ -518,8 +520,6 @@ if not df.empty:
             st.plotly_chart(fig_radar, use_container_width=True)
 
         # --- 优化后的中间图表部分：柱状图 + 满意度折线 ---
-        import plotly.graph_objects as go
-        from plotly.subplots import make_subplots
 
         # 1. 创建带双 Y 轴的图表
         fig = make_subplots(specs=[[{"secondary_y": True}]])
@@ -616,12 +616,9 @@ if not df.empty:
         # --- 7. 用户原声词云分析 (优化版：降噪 + 词组强化) ---
         st.markdown("---")
         st.markdown("### ☁️ 用户原声高频词组")
-        
-        from wordcloud import WordCloud, STOPWORDS
-        import matplotlib.pyplot as plt
-
+    
         # 1. 汇总文本
-        all_text = " ".join(sub_df['review_content'].astype(str).tolist())
+        all_text = " ".join(sub_df['s_text'].astype(str).tolist())
 
         if len(all_text) > 20:
             # 2. 深度过滤 (借鉴同事代码去噪思想)
@@ -671,19 +668,27 @@ if not df.empty:
             
             # 搜索包含这些词的评价
             if neg_keywords:
-                search_pattern = '|'.join([re.escape(k) for k in neg_keywords])
-                # 过滤出低分评论 (Rating <= 3) 且 包含负面词
-                vocal_df = sub_df[
-                    (sub_df['Rating'] <= 3) & 
-                    (sub_df['review_content'].str.contains(search_pattern, na=False, flags=re.IGNORECASE))
-                ][['Rating', 'review_content']].head(10)
+                # 过滤掉空字符串并转义，防止正则错误
+                valid_keys = [re.escape(k) for k in neg_keywords if k.strip()]
                 
-                if not vocal_df.empty:
-                    st.warning(f"以下是用户在【{target_dim}】维度的真实痛点原声：")
-                    # 美化表格显示
-                    for _, row in vocal_df.iterrows():
-                        st.markdown(f"**[{row['Rating']}⭐]** {row['review_content']}")
-                        st.divider()
+                if not valid_keys:
+                    st.info("该维度暂无定义的有效负面关键词。")
+                else:
+                    search_pattern = '|'.join(valid_keys)
+                    
+                    # 这里的 review_content 已统一修改为 s_text
+                    # 使用 drop_duplicates() 防止同一句拆分后重复显示
+                    vocal_df = sub_df[
+                        (sub_df['Rating'] <= 3) & 
+                        (sub_df['s_text'].str.contains(search_pattern, na=False, flags=re.IGNORECASE))
+                    ][['Rating', 's_text']].drop_duplicates().head(10)
+                    
+                    if not vocal_df.empty:
+                        st.warning(f"以下是用户在【{target_dim}】维度的真实痛点原声：")
+                        for _, row in vocal_df.iterrows():
+                            # 使用 Markdown 美化显示，s_text 是拆分后的短句
+                            st.markdown(f"**[{row['Rating']}⭐]** {row['s_text']}")
+                            st.divider()
                 else:
                     st.info("该维度下暂未捕捉到高代表性的负面原声评价。")
             else:
