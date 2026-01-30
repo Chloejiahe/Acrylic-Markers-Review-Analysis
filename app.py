@@ -516,84 +516,57 @@ def load_raw_data():
     for filename, info in data_map.items():
         if os.path.exists(filename):
             df_temp = pd.read_excel(filename)
-            # 自动识别评论列
             col_name = 'Content' if 'Content' in df_temp.columns else \
                        ('Review Body' if 'Review Body' in df_temp.columns else df_temp.columns[0])
             
-            # --- 优化1：句子级拆分 + 语义极性感知 ---
-            # 目的：解决 "Not leaky at all" 被误判的问题
             df_temp = df_temp.dropna(subset=[col_name])
             
-            # 定义句子拆分函数
             def split_and_analyze(text):
+                # 预处理：转小写并拆句
                 sentences = sent_tokenize(str(text).lower())
                 results = []
                 for s in sentences:
-                    # 获取该句子的情感极性 (-1.0 到 1.0)
+                    # TextBlob 极性分析
                     pol = TextBlob(s).sentiment.polarity
                     results.append({'text': s, 'polarity': pol})
                 return results
 
-            # 将长评论拆成小句，并保留原始 Rating
             df_temp['sentences'] = df_temp[col_name].apply(split_and_analyze)
-            # 展开（Explode）使每一行变成一个独立的句子
             df_exploded = df_temp.explode('sentences')
-            df_exploded['s_text'] = df_exploded['sentences'].apply(lambda x: x['text'])
-            df_exploded['s_pol'] = df_exploded['sentences'].apply(lambda x: x['polarity'])
+            
+            # 安全提取，防止空值报错
+            df_exploded['s_text'] = df_exploded['sentences'].apply(lambda x: x['text'] if isinstance(x, dict) else "")
+            df_exploded['s_pol'] = df_exploded['sentences'].apply(lambda x: x['polarity'] if isinstance(x, dict) else 0)
             
             df_exploded['main_category'] = info[0]
             df_exploded['sub_type'] = info[1]
+            
+            # 执行 ASIN 映射
+            asin_col = next((c for c in ['ASIN', 'Parent ASIN', 'Product ID'] if c in df_exploded.columns), None)
+            if asin_col:
+                df_exploded['sku_spec'] = df_exploded[asin_col].map(USER_CATEGORY_MAPPING).fillna("Other-Unmapped")
+            else:
+                df_exploded['sku_spec'] = "Unknown-Spec"
+                
             combined.append(df_exploded)
     
     return pd.concat(combined, ignore_index=True) if combined else pd.DataFrame()
-
-# --- 在数据加载时应用 Mapping ---
-def process_data_with_mapping(df):
-    """
-    将原始数据的 ASIN 映射为具体的规格名称 (e.g., Multicolor36-fine+dot-LowPrice)
-    """
-    # 假设你的原始数据中有 'ASIN' 或 'Product ID' 列
-    asin_col = 'ASIN' if 'ASIN' in df.columns else ('Parent ASIN' if 'Parent ASIN' in df.columns else None)
     
-    if asin_col:
-        df['sku_spec'] = df[asin_col].map(USER_CATEGORY_MAPPING).fillna("Other-Unmapped")
-    else:
-        df['sku_spec'] = "Unknown-Spec"
-    
-    return df
-
-# --- 深度提取人群与动机 ---
-def extract_advanced_features_v2(df):
-    """根据你的 CLASSIFICATION_RULES 为每一句评论打标签"""
-    for dim_name, sub_dict in CLASSIFICATION_RULES.items():
-        # 清洗列名，例如 "User_Role" -> "feat_User_Role"
-        clean_col_name = "feat_" + dim_name
-        
-        def get_tag(text):
-            text_lower = str(text).lower()
-            for tag, keywords in sub_dict.items():
-                if any(k.lower() in text_lower for k in keywords):
-                    return tag
-            return "未提及"
-        
-        df[clean_col_name] = df['s_text'].apply(get_tag)
-    return df
 
 # --- 4. 核心分析逻辑 (优化版：引入评分加权与深度透视) ---
-def extract_advanced_features_v2(df):
+def extract_advanced_features(df):
+    """为每一句评论打上画像、场景、动机标签"""
+    processed_df = df.copy()
     for dim_name, sub_dict in CLASSIFICATION_RULES.items():
-        # 统一使用 feat_ 前缀
         clean_col_name = "feat_" + dim_name
-        
         def get_tag(text):
             text_lower = str(text).lower()
             for tag, keywords in sub_dict.items():
-                if any(k.lower() in text_lower for k in keywords):
+                if any(str(k).lower() in text_lower for k in keywords):
                     return tag
             return "未提及"
-        
-        df[clean_col_name] = df['s_text'].apply(get_tag)
-    return df
+        processed_df[clean_col_name] = processed_df['s_text'].apply(get_tag)
+    return processed_df
 
 
 def analyze_sentiments(df_sub):
@@ -714,9 +687,9 @@ if not df.empty:
                 line_color='#3498db'
             ))
             fig_radar.update_layout(
-                polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+                polar=dict(radialaxis=dict(visible=True, range=[0, 105])),
                 showlegend=False,
-                title=f"【{sub_name}】维度健康度雷达图 (越往中心缩进说明痛点越多)",
+                title=f"【{sub_name}】维度健康度雷达图",
                 height=400
             )
             st.plotly_chart(fig_radar, use_container_width=True, key=f"radar_{sub_name}")
@@ -753,7 +726,7 @@ if not df.empty:
         st.markdown("---")
         c3, c4 = st.columns(2)
 
-# --- c3: SKU 规格竞争力矩阵 ---
+        # --- c3: SKU 规格竞争力矩阵 ---
         with c3:
             st.markdown("#### 🚀 SKU 规格表现矩阵 (Spec Performance)")
             
@@ -1029,12 +1002,10 @@ if not df.empty:
                         (sub_df['s_text'].str.contains(search_pattern, na=False, flags=re.IGNORECASE))
                     ][['Rating', 's_text']].drop_duplicates().head(10)
                     
-                    if not vocal_df.empty:
+                    if not vocal_df.empty: # (缩进: 20空格)
                         st.warning(f"以下是用户在【{target_dim}】维度的真实痛点原声：")
-                        for i, (_, row) in enumerate(vocal_df.iterrows()): # 改成带 i 的循环
-                            # 加上唯一的 key
-                            st.markdown(f"**[{row['Rating']}⭐]** {row['s_text']}", 
-                                        key=f"vocal_text_{sub_name}_{target_dim}_{i}")
+                        for i, (_, row) in enumerate(vocal_df.iterrows()):
+                            st.markdown(f"**[{row['Rating']}⭐]** {row['s_text']}")
                             st.divider()
                     else:
                         st.info("该维度下暂未捕捉到高代表性的负面原声评价。")
