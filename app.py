@@ -947,87 +947,100 @@ if not df.empty:
 
         st.markdown("---")
 
-       # --- 新版块: 用户-场景-动机 全景流动图 (User Journey Sankey) ---
+# --- 优化版块: 用户-场景-动机 全景流动图 (User Journey Sankey) ---
         st.markdown("#### 🌊 用户旅程全景流向 (User-Usage-Motivation Flow)")
-        st.info("💡 此图展示了 **用户身份** 如何流向具体的 **使用场景**，最终由什么 **动机** 驱动购买。线条越粗，代表人群规模越大。")
+        st.info("💡 此图展示了 **用户身份** 如何流向具体的 **使用场景**，最终由什么 **动机** 驱动购买。")
 
-        # 1. 数据准备：过滤掉无效节点
+        # 1. 数据准备
         sankey_df = sub_df[
             (sub_df['feat_User_Role'] != "未提及") & 
             (sub_df['feat_Usage'] != "未提及") & 
             (sub_df['feat_Motivation'] != "未提及")
         ]
 
-        if len(sankey_df) > 5:  # 只有数据足够才画图
-            # 2. 节点映射 (Label -> Index)
-            # 定义层级：Level 0 = Role, Level 1 = Usage, Level 2 = Motivation
-            
-            # 获取各层级的 Top 5 (避免图表过乱)
+        if len(sankey_df) > 5:
+            # 2. 节点与色彩定义 (使用更专业的 D3 配色)
             top_roles = sankey_df['feat_User_Role'].value_counts().head(5).index.tolist()
             top_usages = sankey_df['feat_Usage'].value_counts().head(5).index.tolist()
             top_motivations = sankey_df['feat_Motivation'].value_counts().head(5).index.tolist()
             
-            # 筛选数据
             filtered_sk = sankey_df[
                 sankey_df['feat_User_Role'].isin(top_roles) & 
                 sankey_df['feat_Usage'].isin(top_usages) & 
                 sankey_df['feat_Motivation'].isin(top_motivations)
             ]
             
-            # 生成节点列表
             all_nodes = top_roles + top_usages + top_motivations
             node_map = {name: i for i, name in enumerate(all_nodes)}
             
-            # 3. 构建 Link (Source -> Target)
-            sources = []
-            targets = []
-            values = []
-            link_colors = []
+            # 为不同层级设置不同的色系
+            # Role: 蓝色系, Usage: 绿色系, Motivation: 橙黄色系
+            node_colors = (
+                ['#3182bd'] * len(top_roles) +    # 沉稳蓝
+                ['#31a354'] * len(top_usages) +   # 活力绿
+                ['#e6550d'] * len(top_motivations) # 预警橙
+            )
             
-            # 第一阶段：Role -> Usage
+            # 3. 构建 Link
+            sources, targets, values, link_colors = [], [], [], []
+            
+            # Role -> Usage (色彩采用源节点的半透明色)
             step1 = filtered_sk.groupby(['feat_User_Role', 'feat_Usage']).size().reset_index(name='count')
             for _, row in step1.iterrows():
                 sources.append(node_map[row['feat_User_Role']])
                 targets.append(node_map[row['feat_Usage']])
                 values.append(row['count'])
-                link_colors.append('rgba(31, 119, 180, 0.3)') # 浅蓝色流线
+                link_colors.append('rgba(49, 130, 189, 0.25)') # 半透明蓝
                 
-            # 第二阶段：Usage -> Motivation
+            # Usage -> Motivation
             step2 = filtered_sk.groupby(['feat_Usage', 'feat_Motivation']).size().reset_index(name='count')
             for _, row in step2.iterrows():
                 sources.append(node_map[row['feat_Usage']])
                 targets.append(node_map[row['feat_Motivation']])
                 values.append(row['count'])
-                link_colors.append('rgba(255, 127, 14, 0.3)') # 浅橙色流线
+                link_colors.append('rgba(49, 163, 84, 0.25)') # 半透明绿
 
-            # 4. 绘图
+            # 4. 绘图与布局优化
             fig_sankey = go.Figure(data=[go.Sankey(
                 node=dict(
-                    pad=15,
-                    thickness=20,
-                    line=dict(color="black", width=0.5),
-                    label=all_nodes,
-                    color="blue" # 节点默认颜色，也可以自定义列表
+                    pad=30,           # 增加节点间距，更有呼吸感
+                    thickness=15,      # 减薄节点厚度，更精致
+                    line=dict(color="white", width=1),
+                    label=[f"<b>{n}</b>" for n in all_nodes], # 加粗字体
+                    color=node_colors,
+                    hoverlabel=dict(bgcolor="#2c3e50", font_size=14, font_family="Arial")
                 ),
                 link=dict(
                     source=sources,
                     target=targets,
                     value=values,
-                    color=link_colors
+                    color=link_colors,
+                    # 鼠标悬停时高亮显示路径信息
+                    hovertemplate='%{source.label} → %{target.label}<br>样本量: %{value}<extra></extra>'
                 )
             )])
             
-            fig_sankey.update_layout(title_text="用户需求流动路径图", font_size=12, height=500)
+            fig_sankey.update_layout(
+                title=dict(
+                    text="用户需求路径映射图 (User Persona Journey)",
+                    font=dict(size=18, color='#2c3e50'),
+                    x=0.05
+                ),
+                font_size=12,
+                height=600, # 稍微增加高度，防止标签重叠
+                margin=dict(t=80, b=40, l=20, r=20),
+                paper_bgcolor='rgba(0,0,0,0)', # 背景透明
+                plot_bgcolor='rgba(0,0,0,0)'
+            )
+            
             st.plotly_chart(fig_sankey, use_container_width=True)
             
-            # 简短解读
+            # 5. 增强型解读
             top_path = step2.sort_values('count', ascending=False).iloc[0]
-            st.caption(f"🚀 **最大需求路径：** 大量用户在 **{top_path['feat_Usage']}** 场景下，主要被 **{top_path['feat_Motivation']}** 驱动。")
+            st.success(f"🎯 **高价值路径识别：** 核心场景 **{top_path['feat_Usage']}** 的用户主要受 **{top_path['feat_Motivation']}** 驱动。建议针对此链路优化营销话术。")
             
         else:
-            st.warning("数据量不足以生成流向图")
-        
-        st.markdown("---")
+            st.warning("🔍 数据样本量不足，无法生成流向图。")
 
         # --- 板块 3: 核心痛点维度评分矩阵 (人群动态维度优化版) ---
         st.markdown("#### 🚀 核心痛点维度评分矩阵 (Dynamic Persona-Pain Matrix)")
