@@ -1000,40 +1000,39 @@ if not df.empty:
                 values.append(row['count'])
                 link_colors.append('rgba(49, 163, 84, 0.25)') # 半透明绿
 
-            # 4. 绘图与布局优化
+            # 4. 绘图与布局优化 (增强文字版)
             fig_sankey = go.Figure(data=[go.Sankey(
                 node=dict(
-                    pad=30,           # 增加节点间距，更有呼吸感
-                    thickness=15,      # 减薄节点厚度，更精致
-                    line=dict(color="white", width=1),
-                    label=[f"<b>{n}</b>" for n in all_nodes], # 加粗字体
+                    pad=30,           
+                    thickness=15,      
+                    line=dict(color="rgba(0,0,0,0.2)", width=0.5), # 边框变淡
+                    # --- 文字优化点 ---
+                    label=[f"<span style='color:black; font-weight:bold;'>{n}</span>" for n in all_nodes], 
                     color=node_colors,
-                    hoverlabel=dict(bgcolor="#2c3e50", font_size=14, font_family="Arial")
+                    # -----------------
+                    hoverlabel=dict(bgcolor="#2c3e50", font_size=14)
                 ),
                 link=dict(
                     source=sources,
                     target=targets,
                     value=values,
                     color=link_colors,
-                    # 鼠标悬停时高亮显示路径信息
                     hovertemplate='%{source.label} → %{target.label}<br>样本量: %{value}<extra></extra>'
                 )
             )])
             
             fig_sankey.update_layout(
-                title=dict(
-                    text="用户需求路径映射图 (User Persona Journey)",
-                    font=dict(size=18, color='#2c3e50'),
-                    x=0.05
+                title=dict(text="用户需求路径映射图", x=0.05, font=dict(size=20, color='black')),
+                font=dict(
+                    family="Arial, sans-serif", # 使用无衬线字体更清晰
+                    size=14,                    # 增大字号
+                    color="black"               # 全局强制黑色
                 ),
-                font_size=12,
-                height=600, # 稍微增加高度，防止标签重叠
-                margin=dict(t=80, b=40, l=20, r=20),
-                paper_bgcolor='rgba(0,0,0,0)', # 背景透明
-                plot_bgcolor='rgba(0,0,0,0)'
+                height=600,
+                margin=dict(t=80, b=40, l=40, r=40), # 增加两侧边距防止文字被切断
+                paper_bgcolor='white',            # 建议底色设为纯白而非透明
+                plot_bgcolor='white'
             )
-            
-            st.plotly_chart(fig_sankey, use_container_width=True)
             
             # 5. 增强型解读
             top_path = step2.sort_values('count', ascending=False).iloc[0]
