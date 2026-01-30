@@ -962,56 +962,56 @@ if not df.empty:
             st.info("样本量不足以生成热力图")
         st.markdown("---")
 
-        # --- 板块 3: 核心痛点维度评分矩阵 (气泡图 + 人群交互下钻) ---
-        st.markdown("#### 🚀 核心痛点维度评分矩阵 (Pain-point Bubble Matrix)")
+        # --- 板块 3: 核心痛点维度评分矩阵 (人群动态维度优化版) ---
+        st.markdown("#### 🚀 核心痛点维度评分矩阵 (Dynamic Persona-Pain Matrix)")
         
-        if not pain_df.empty and len(pain_df) >= 3:
-            # 1. 确定核心维度与 Top 3 身份
-            dims = pain_df['维度'].tolist()[:3]
-            dim_x, dim_y, dim_bubble = dims[0], dims[1], dims[2]
-            
-            # 提取样本量最大的前 3 个身份
+        if not pain_df.empty:
+            # 获取样本量最大的前 3 个身份
             top_roles = sub_df[sub_df['feat_User_Role'] != "未提及"]['feat_User_Role'].value_counts().head(3).index.tolist()
             
-            # --- 定义内部绘图函数，确保逻辑复用 ---
-            def draw_sku_bubble_chart(data_source, title_label, suffix):
+            # --- 定义内部绘图函数 (增加了动态维度传入) ---
+            def draw_sku_bubble_chart(data_source, title_label, suffix, local_dims):
+                # 确定当前图表的 X, Y, Bubble 维度
+                d_x = local_dims[0] if len(local_dims) > 0 else "N/A"
+                d_y = local_dims[1] if len(local_dims) > 1 else "N/A"
+                d_b = local_dims[2] if len(local_dims) > 2 else "N/A"
+                
                 plot_data = []
                 all_skus = data_source['sku_spec'].unique()
-                
                 for sku in all_skus:
                     sku_df = data_source[data_source['sku_spec'] == sku]
                     
                     def get_metric(target_df, dimension):
+                        if dimension == "N/A": return None, 0
                         keywords = []
-                        # 确保 FEATURE_DIC 在此处作用域内可用
                         for keys in FEATURE_DIC.get(dimension, {}).values(): keywords.extend(keys)
                         pat = '|'.join([re.escape(k) for k in keywords if k.strip()])
                         matched = target_df[target_df['s_text'].str.contains(pat, na=False, flags=re.IGNORECASE)]
                         return (matched['Rating'].mean(), len(matched)) if not matched.empty else (None, 0)
                     
-                    sc_x, _ = get_metric(sku_df, dim_x)
-                    sc_y, _ = get_metric(sku_df, dim_y)
-                    sc_b, _ = get_metric(sku_df, dim_bubble)
+                    sc_x, _ = get_metric(sku_df, d_x)
+                    sc_y, _ = get_metric(sku_df, d_y)
+                    sc_b, _ = get_metric(sku_df, d_b)
                     
                     if any(v is not None for v in [sc_x, sc_y, sc_b]):
                         plot_data.append({
                             'sku': sku,
-                            'score_x': sc_x if sc_x else 2.5,
-                            'score_y': sc_y if sc_y else 2.5,
+                            'score_x': sc_x if sc_x else 3.0,
+                            'score_y': sc_y if sc_y else 3.0,
                             'score_bubble': sc_b if sc_b else 1.0
                         })
                 
                 res_df = pd.DataFrame(plot_data)
                 if res_df.empty:
-                    st.warning(f"⚠️ {title_label} 下暂无足够维度数据")
+                    st.warning(f"⚠️ {title_label} 的核心维度下暂无评分数据")
                     return
 
+                fig = go.Figure()
                 def format_name(n):
                     parts = str(n).split('-')
                     core = "-".join(parts[:-1]) if len(parts) > 1 else n
                     return core.replace("-", "<br>")
 
-                fig = go.Figure()
                 fig.add_trace(go.Scatter(
                     x=res_df['score_x'], y=res_df['score_y'],
                     mode='markers+text',
@@ -1021,37 +1021,47 @@ if not df.empty:
                         size=res_df['score_bubble'] * 15,
                         color=res_df['score_x'] + res_df['score_y'],
                         colorscale='RdYlGn', showscale=True,
-                        colorbar=dict(title="满意度指数"),
+                        colorbar=dict(title="满意度"),
                         line=dict(width=1, color='DarkSlateGrey')
                     ),
-                    hovertemplate=f"<b>规格: %{{text}}</b><br>{dim_x}: %{{x:.2f}}<br>{dim_y}: %{{y:.2f}}<br>{dim_bubble}: %{{marker.size/15:.2f}}<extra></extra>"
+                    hovertemplate=f"<b>规格: %{{text}}</b><br>{d_x}: %{{x:.2f}}<br>{d_y}: %{{y:.2f}}<br>{d_b}: %{{marker.size/15:.2f}}<extra></extra>"
                 ))
                 
                 fig.update_layout(
-                    title=f"产品表现分布 - {title_label}",
-                    xaxis=dict(title=f"{dim_x} 评分", range=[0.5, 5.5], gridcolor='lightgray'),
-                    yaxis=dict(title=f"{dim_y} 评分", range=[0.5, 5.5], gridcolor='lightgray'),
+                    title=f"{title_label} - 关键痛点表现 (X:{d_x} / Y:{d_y})",
+                    xaxis=dict(title=f"{d_x} 评分", range=[0.5, 5.5], gridcolor='#f0f0f0'),
+                    yaxis=dict(title=f"{d_y} 评分", range=[0.5, 5.5], gridcolor='#f0f0f0'),
                     height=600, plot_bgcolor='white'
                 )
-                
-                # 关键修复 1: 唯一的 Key
-                # 关键修复 2: 解决弃用警告，用 width="stretch" 替代 use_container_width=True
                 st.plotly_chart(fig, width="stretch", key=f"bubble_chart_{suffix}")
 
             # 2. 创建交互式 Tabs
-            tab_list = st.tabs(["📊 总体全量分析"] + [f"👤 人群：{r}" for r in top_roles])     
+            tab_list = st.tabs(["📊 总体盘点"] + [f"👤 {r}" for r in top_roles])     
+            
             with tab_list[0]:
-                st.caption(f"矩阵图例：X={dim_x} | Y={dim_y} | 气泡大小={dim_bubble}")
-                # 传入唯一后缀 "total"
-                draw_sku_bubble_chart(sub_df, "全量数据", "total")  
+                global_dims = pain_df['维度'].tolist()[:3]
+                st.caption(f"🔎 总体在意：X轴={global_dims[0]} | Y轴={global_dims[1]} | 气泡={global_dims[2]}")
+                draw_sku_bubble_chart(sub_df, "全盘客户", "total", global_dims)  
+            
             for i, role in enumerate(top_roles):
                 with tab_list[i+1]:
-                    role_sub = sub_df[sub_df['feat_User_Role'] == role]
-                    st.caption(f"针对 **{role}** 人群的维度评分矩阵")
-                    # 传入唯一后缀，使用索引 i 确保循环内不重复
-                    draw_sku_bubble_chart(role_sub, role, f"role_{i}")
+                    role_df = sub_df[sub_df['feat_User_Role'] == role]
+                    # --- 核心改动：计算当前身份自己的 Top 3 痛点 ---
+                    role_pain = role_df[role_df['s_pol'] < 0]['s_text'].apply(
+                        lambda x: next((dim for dim, tags in FEATURE_DIC.items() 
+                                      if any(k in x for t in tags.values() for k in t)), None)
+                    ).value_counts().reset_index()
+                    role_pain.columns = ['维度', '提及频次']
+                    
+                    local_dims = role_pain['维度'].tolist()[:3]
+                    
+                    if len(local_dims) < 2:
+                        st.info(f"💡 {role} 人群评价维度较集中，无法构成多维矩阵。")
+                    else:
+                        st.caption(f"🎯 **{role}** 最在意：X={local_dims[0]} | Y={local_dims[1]} (气泡={local_dims[2] if len(local_dims)>2 else 'N/A'})")
+                        draw_sku_bubble_chart(role_df, role, f"role_{i}", local_dims)
         else:
-            st.info("💡 核心痛点不足 3 个，无法构建三维气泡矩阵。")
+            st.info("💡 暂无痛点数据。")
             
         
         # --- 板块 5: 动机与核心痛点深度关联分析 ---
