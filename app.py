@@ -964,58 +964,82 @@ if not df.empty:
 
         # --- 板块 3: 核心痛点靶向评分矩阵 (独占一行) ---
         st.markdown("#### 🚀 核心痛点维度评分矩阵 (Pain-point Score Matrix)")
-        dims = pain_df['维度'].tolist()[:3] if not pain_df.empty else ["性价比", "流畅性", "笔头表现"]
-        while len(dims) < 3: dims.append("其他")
-        dim_x, dim_y, dim_bubble = dims[0], dims[1], dims[2]
-        st.caption(f"矩阵解析：X={dim_x}评分 | Y={dim_y}评分 | 气泡大小={dim_bubble}评分")
+        if not pain_df.empty and len(pain_df) >= 3:
+            dims = pain_df['维度'].tolist()[:3]
+            dim_x, dim_y, dim_bubble = dims[0], dims[1], dims[2]
+            st.caption(f"矩阵解析：X={dim_x}评分 | Y={dim_y}评分 | 气泡大小={dim_bubble}评分")
 
-        def get_triple_pain_stats(df, d_x, d_y, d_b):
-            sku_results = []
-            all_skus = df['sku_spec'].unique()
-            for sku in all_skus:
-                sku_df = df[df['sku_spec'] == sku]
-                def get_dim_metrics(target_df, dimension):
-                    if dimension not in FEATURE_DIC: return 0, 0
-                    keywords = []
-                    for tag, keys in FEATURE_DIC[dimension].items(): keywords.extend(keys)
-                    pat = '|'.join([re.escape(k) for k in keywords if k.strip()])
-                    matched = target_df[target_df['s_text'].str.contains(pat, na=False, flags=re.IGNORECASE)]
-                    if matched.empty: return None, 0
-                    return matched['Rating'].mean(), len(matched)
+            def get_triple_pain_stats(df, d_x, d_y, d_b):
+                sku_results = []
+                all_skus = df['sku_spec'].unique()
+                for sku in all_skus:
+                    sku_df = df[df['sku_spec'] == sku]
+                    def get_dim_metrics(target_df, dimension):
+                        if dimension not in FEATURE_DIC: return 0, 0
+                        keywords = []
+                        for tag, keys in FEATURE_DIC[dimension].items(): keywords.extend(keys)
+                        pat = '|'.join([re.escape(k) for k in keywords if k.strip()])
+                        matched = target_df[target_df['s_text'].str.contains(pat, na=False, flags=re.IGNORECASE)]
+                        if matched.empty: return None, 0
+                        return matched['Rating'].mean(), len(matched)
+                    
+                    score_x, _ = get_dim_metrics(sku_df, d_x)
+                    score_y, _ = get_dim_metrics(sku_df, d_y)
+                    score_b, vol_b = get_dim_metrics(sku_df, d_b)
+                    
+                    # 只要这三个维度中有任何一个有评分，就纳入计算
+                    if score_x is not None or score_y is not None or score_b is not None:
+                        sku_results.append({
+                            'sku': sku,
+                            'score_x': score_x if score_x is not None else 0,
+                            'score_y': score_y if score_y is not None else 0,
+                            'score_bubble': score_b if score_b is not None else 0
+                        })
+                return pd.DataFrame(sku_results)
+
+            triple_stats = get_triple_pain_stats(sub_df, dim_x, dim_y, dim_bubble)
+
+            if not triple_stats.empty:
+                # 3. 绘图部分 (包含之前为你优化的换行逻辑)
+                fig_triple = go.Figure()
                 
-                score_x, vol_x = get_dim_metrics(sku_df, d_x)
-                score_y, vol_y = get_dim_metrics(sku_df, d_y)
-                score_b, vol_b = get_dim_metrics(sku_df, d_b)
-                if vol_x == 0 and vol_y == 0 and vol_b == 0: continue
-                sku_results.append({
-                    'sku': sku,
-                    'score_x': score_x if score_x is not None else 0,
-                    'score_y': score_y if score_y is not None else 0,
-                    'score_bubble': score_b if score_b is not None else 0
-                })
-            return pd.DataFrame(sku_results)
+                # 优化后的名称处理：保留规格，去掉末尾价格，加入换行
+                def format_sku_name(name):
+                    parts = str(name).split('-')
+                    # 如果有横杠，保留除最后一个（价格带）以外的所有部分，并换行
+                    core = "-".join(parts[:-1]) if len(parts) > 1 else name
+                    return core.replace("-", "<br>")
 
-        triple_stats = get_triple_pain_stats(sub_df, dim_x, dim_y, dim_bubble)
-        if not triple_stats.empty:
-            fig_triple = go.Figure()
-            fig_triple.add_trace(go.Scatter(
-                x=triple_stats['score_x'], y=triple_stats['score_y'],
-                mode='markers+text',
-                text=triple_stats['sku'].apply(lambda x: str(x).split('-')[0]),
-                textposition="top center",
-                marker=dict(
-                    size=triple_stats['score_bubble'] * 12 + 5,
-                    color=triple_stats['score_x'] + triple_stats['score_y'] + triple_stats['score_bubble'],
-                    colorscale='RdYlGn', showscale=True,
-                    colorbar=dict(title="综合防御力"),
-                    line=dict(width=1, color='DarkSlateGrey')
-                ),
-                hovertemplate=f"<b>规格: %{{text}}</b><br>{dim_x}: %{{x:.2f}}<br>{dim_y}: %{{y:.2f}}<br>{dim_bubble}: %{{marker.size/12:.2f}}"
-            ))
-            fig_triple.update_layout(height=550, plot_bgcolor='rgba(240,240,240,0.5)')
-            st.plotly_chart(fig_triple, use_container_width=True)
-        st.markdown("---")
-
+                fig_triple.add_trace(go.Scatter(
+                    x=triple_stats['score_x'],
+                    y=triple_stats['score_y'],
+                    mode='markers+text',
+                    text=triple_stats['sku'].apply(format_sku_name),
+                    textposition="top center",
+                    marker=dict(
+                        size=triple_stats['score_bubble'] * 12 + 5, # 评分越高气泡越大
+                        color=triple_stats['score_x'] + triple_stats['score_y'] + triple_stats['score_bubble'],
+                        colorscale='RdYlGn', 
+                        showscale=True,
+                        colorbar=dict(title="综合评分"),
+                        line=dict(width=1, color='DarkSlateGrey')
+                    ),
+                    customdata=triple_stats['sku'],
+                    hovertemplate=f"<b>规格: %{{customdata}}</b><br>{dim_x}: %{{x:.2f}}<br>{dim_y}: %{{y:.2f}}<br>{dim_bubble}: %{{marker.size/12:.2f}}<extra></extra>"
+                ))
+                
+                fig_triple.update_layout(
+                    height=600,
+                    xaxis=dict(title=f"{dim_x} 满意度", range=[0.5, 5.5], gridcolor='lightgray'),
+                    yaxis=dict(title=f"{dim_y} 满意度", range=[0.5, 5.5], gridcolor='lightgray'),
+                    plot_bgcolor='white'
+                )
+                st.plotly_chart(fig_triple, use_container_width=True)
+            else:
+                st.warning("⚠️ 选定的前三大痛点在当前 SKU 中缺少具体的评分数据。")
+        else:
+            st.info("💡 核心痛点不足 3 个，无法构建三维评价矩阵。")
+            
         # --- 板块 4: PMF 错位分析 (独占一行) ---
         st.markdown("#### 🔬 人群 x 价格带 满意度偏离 (PMF)")
         role_col = 'feat_User_Role'
