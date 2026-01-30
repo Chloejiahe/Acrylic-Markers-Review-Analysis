@@ -739,46 +739,55 @@ if not df.empty:
         with c3:
             st.markdown("#### 🚀 SKU 规格表现矩阵 (Spec Performance)")
             
-            # 按映射后的 sku_spec 分组，计算平均分、讨论声量和差评风险
-            sku_stats = sub_df.groupby('sku_spec').agg(
+            # --- 强制刷新缓存调试 (临时加入) ---
+            # st.write(f"当前子集行数: {len(sub_df)}") 
+            # st.write("前5个ASIN:", sub_df['ASIN'].head().tolist() if 'ASIN' in sub_df.columns else "无ASIN列")
+            # st.write("规格分布:", sub_df['sku_spec'].value_counts())
+            
+            # 过滤掉 Unknown，只看映射成功的，方便排查
+            display_stats = sub_df.copy()
+            
+            # 按映射后的 sku_spec 分组
+            sku_stats = display_stats.groupby('sku_spec').agg(
                 avg_rating=('Rating', 'mean'),
                 vocal_volume=('s_text', 'count'),
-                # 计算差评率（1-3分）作为风险指标
                 neg_rate=('Rating', lambda x: (x <= 3).sum() / len(x) * 100 if len(x) > 0 else 0)
             ).reset_index()
 
+            # 如果全是 Unknown，为了让图能看，先不要过滤，但我们要查原因
             if not sku_stats.empty:
+                # 修复 size 逻辑：如果只有一行数据且 neg_rate 为 0，sizeref 会导致报错
+                max_neg = max(sku_stats['neg_rate'])
+                calc_sizeref = 2. * max_neg / (50.**2) if max_neg > 0 else 1
+                
                 fig_matrix = go.Figure()
                 fig_matrix.add_trace(go.Scatter(
                     x=sku_stats['avg_rating'],
                     y=sku_stats['vocal_volume'],
                     mode='markers+text',
-                    # 简化显示名称：如果是 Multicolor36-fine-LowPrice，只显示前两段
-                    text=sku_stats['sku_spec'].apply(lambda x: "-".join(x.split('-')[:2]) if '-' in str(x) else x),
+                    text=sku_stats['sku_spec'].apply(lambda x: "-".join(str(x).split('-')[:2]) if '-' in str(x) else x),
                     textposition="top center",
                     marker=dict(
                         size=sku_stats['neg_rate'],
                         sizemode='area',
-                        # 气泡大小逻辑：差评率越高，气泡越大（代表风险越高）
-                        sizeref=2.*max(sku_stats['neg_rate'])/(50.**2) if max(sku_stats['neg_rate']) > 0 else 1,
+                        sizeref=calc_sizeref,
                         sizemin=10,
                         color=sku_stats['avg_rating'],
-                        colorscale='RdYlGn', # 越绿分数越高
+                        colorscale='RdYlGn',
                         showscale=True,
-                        colorbar=dict(title="平均分")
-                    )
+                        colorbar=dict(title="平均分", thickness=15)
+                    ),
+                    hovertemplate="<b>规格: %{text}</b><br>评分: %{x:.2f}<br>声量: %{y}<br>差评率: %{marker.size:.1f}%<extra></extra>"
                 ))
                 
                 fig_matrix.update_layout(
-                    title="SKU 竞争力分析 (气泡大=投诉风险高, 越靠右上越强)",
-                    xaxis_title="平均评分 (满意度)",
-                    yaxis_title="声量 (评论总句数)",
+                    xaxis=dict(title="平均评分", gridcolor='white'),
+                    yaxis=dict(title="声量 (评论句数)", gridcolor='white'),
                     height=500,
-                    margin=dict(l=20, r=20, t=40, b=20)
+                    margin=dict(l=20, r=20, t=40, b=20),
+                    plot_bgcolor='rgba(240,240,240,0.5)' # 增加背景色方便看清气泡
                 )
                 st.plotly_chart(fig_matrix, use_container_width=True)
-            else:
-                st.info("暂无 SKU 规格映射数据")
 
         # --- c4: 人群 x 价格带 “错位”分析 (PMF) ---
         with c4:
