@@ -864,6 +864,8 @@ if not df.empty:
                 # 确保这个 else 与 if neg_keywords: 对齐
                 st.write("该维度暂无定义的负面关键词。")
 
+        st.markdown("---")
+        
         # --- 数据预处理 ---
         sub_df = extract_advanced_features(sub_df)
 
