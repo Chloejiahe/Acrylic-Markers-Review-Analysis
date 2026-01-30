@@ -456,9 +456,10 @@ CLASSIFICATION_RULES = {
             '男性 (Male)': ['man', 'men', 'nephew','boy', 'boys', 'he', 'his', 'him', 'husband', 'father', 'dad', 'son', 'boyfriend', 'male', 'brother', 'uncle', 'grandfather', 'nephew', 'gentleman']
         },
         "Age_Group": {
-            '儿童 (Child)': ['kid', 'kids', 'child', 'children', 'toddler', 'baby', 'preschooler', 'little one', 'for my son', 'for my daughter', 'grandson', 'granddaughter','niece','nephew'],
-            '青少年 (Teenager)': ['teen', 'teenager', 'adolescent', 'youth', 'high school', 'college student', 'university student'],
-            '老年人 (Senior)': ['senior', 'elderly', 'retired', 'grandparent', 'grandfather', 'grandmother', 'golden years']
+            '儿童/幼儿': ['kid', 'kids', 'child', 'children', 'toddler', 'baby', 'preschooler', 'little one', 'grandson', 'granddaughter', 'for my son', 'for my daughter','nephew', 'niece', 'elementary school'],
+            '青少年/学生': ['teen', 'teenager', 'adolescent', 'youth', 'high school', 'middle school', 'college student', 'university student', 'art student', 'for class'],
+            '成年人/专业人士': ['adult', 'professional', 'pro artist', 'office work', 'at work', 'client work', 'in my studio', 'career', 'adult coloring'],
+            '老年人': ['senior', 'elderly', 'retired', 'grandparent', 'grandfather', 'grandmother', 'golden years', 'grandma', 'grandpa']
         },
         "Usage": {
             '填色本填色 (Coloring Book)': ['coloring book', 'coloring books', 'adult coloring', 'colouring book', 'color page', 'coloring pages',  'adult coloring book', 'color therapy', 'mindfulness coloring', 'relaxing coloring', 'intricate coloring', 'detailed coloring', 'secret garden', 'johanna basford', 'kerby rosanes', 'hanna karlzon', 'mandalas', 'mandala coloring', 'color by number', 'mystery coloring'],
