@@ -916,7 +916,7 @@ if not df.empty:
             
             fig_pie.update_layout(
                 title=f"核心访客：{persona_dim}分布",
-                height=450,
+                height=600,
                 showlegend=True,
                 legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5),
                 margin=dict(t=40, b=80, l=20, r=20)
