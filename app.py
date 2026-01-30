@@ -904,97 +904,105 @@ if not df.empty:
         st.markdown("---")
         c3, c4 = st.columns(2)
 
-        # --- c3: 基于 Top 3 痛点集成的 SKU 竞争力矩阵 ---
+        # --- c3: 核心痛点靶向评分矩阵 (Triple-Dimension Performance) ---
         with c3:
-            st.markdown("#### 🚀 核心痛点维度分解矩阵 (Pain-point Axis Breakdown)")
+            st.markdown("#### 🚀 核心痛点维度评分矩阵 (Pain-point Score Matrix)")
             
-            # 1. 自动提取前三个核心痛点维度，分别映射到 X轴, Y轴, 气泡大小
+            # 1. 自动提取前三个核心痛点维度
             dims = pain_df['维度'].tolist()[:3] if not pain_df.empty else ["性价比", "流畅性", "笔头表现"]
             
-            # 补齐维度（防止不足3个）
+            # 补齐维度（防止数据不足3个）
             while len(dims) < 3:
                 dims.append("其他")
             
-            dim_x, dim_y, dim_size = dims[0], dims[1], dims[2]
-            st.caption(f"坐标轴解析：X轴={dim_x} | Y轴={dim_y} | 气泡大小={dim_size}反馈量")
+            dim_x, dim_y, dim_bubble = dims[0], dims[1], dims[2]
+            st.caption(f"矩阵解析：X={dim_x}评分 | Y={dim_y}评分 | 气泡大小={dim_bubble}评分")
 
             # 2. 局部函数：计算每个 SKU 在各独立维度的具体评分
-            def get_axis_pain_stats(df, d_x, d_y, d_s):
+            def get_triple_pain_stats(df, d_x, d_y, d_b):
                 sku_results = []
-                for sku in df['sku_spec'].unique():
+                # 获取该子类下所有 SKU
+                all_skus = df['sku_spec'].unique()
+                
+                for sku in all_skus:
                     sku_df = df[df['sku_spec'] == sku]
                     
-                    def get_dim_score(target_df, dimension):
+                    def get_dim_metrics(target_df, dimension):
                         if dimension not in FEATURE_DIC: return 0, 0
+                        # 汇总该维度的所有关键词
                         keywords = []
                         for tag, keys in FEATURE_DIC[dimension].items():
                             keywords.extend(keys)
                         pat = '|'.join([re.escape(k) for k in keywords if k.strip()])
+                        
                         matched = target_df[target_df['s_text'].str.contains(pat, na=False, flags=re.IGNORECASE)]
-                        if matched.empty: return 0, 0
+                        if matched.empty:
+                            return None, 0
                         return matched['Rating'].mean(), len(matched)
 
-                    score_x, vol_x = get_dim_score(sku_df, d_x)
-                    score_y, vol_y = get_dim_score(sku_df, d_y)
-                    score_s, vol_s = get_dim_score(sku_df, d_s)
+                    score_x, vol_x = get_dim_metrics(sku_df, d_x)
+                    score_y, vol_y = get_dim_metrics(sku_df, d_y)
+                    score_b, vol_b = get_dim_metrics(sku_df, d_b)
                     
-                    # 只有当 SKU 在至少两个维度有数据时才记录
-                    if vol_x > 0 or vol_y > 0:
-                        sku_results.append({
-                            'sku': sku,
-                            'score_x': score_x if vol_x > 0 else df['Rating'].mean(),
-                            'score_y': score_y if vol_y > 0 else df['Rating'].mean(),
-                            'impact_size': vol_s
-                        })
+                    # 过滤掉在该三大维度完全没有提及的 SKU
+                    if vol_x == 0 and vol_y == 0 and vol_b == 0:
+                        continue
+                        
+                    sku_results.append({
+                        'sku': sku,
+                        'score_x': score_x if score_x is not None else 0,
+                        'score_y': score_y if score_y is not None else 0,
+                        'score_bubble': score_b if score_b is not None else 0,
+                        'total_vocal': vol_x + vol_y + vol_b
+                    })
                 return pd.DataFrame(sku_results)
 
-            axis_stats = get_axis_pain_stats(sub_df, dim_x, dim_y, dim_size)
+            triple_stats = get_triple_pain_stats(sub_df, dim_x, dim_y, dim_bubble)
 
-            if not axis_stats.empty:
-                # 3. 动态计算气泡缩放
-                max_s = axis_stats['impact_size'].max()
-                calc_sizeref = 2. * max_s / (50.**2) if max_s > 0 else 1
+            if not triple_stats.empty:
+                # 3. 绘图：评分越高气泡越大
+                fig_triple = go.Figure()
                 
-                fig_axis = go.Figure()
-                fig_axis.add_trace(go.Scatter(
-                    x=axis_stats['score_x'],
-                    y=axis_stats['score_y'],
+                # 为了让评分 1-5 的差异在视觉上更明显，对气泡大小进行指数增强或缩放
+                # 评分越接近 5，气泡越大，代表防御力越强
+                fig_triple.add_trace(go.Scatter(
+                    x=triple_stats['score_x'],
+                    y=triple_stats['score_y'],
                     mode='markers+text',
-                    text=axis_stats['sku'].apply(lambda x: str(x).split('-')[0]),
+                    text=triple_stats['sku'].apply(lambda x: str(x).split('-')[0]),
                     textposition="top center",
                     marker=dict(
-                        size=axis_stats['impact_size'],
-                        sizemode='area',
-                        sizeref=calc_sizeref,
-                        sizemin=12,
-                        color=axis_stats['score_x'] + axis_stats['score_y'], # 颜色反映前两项综合满意度
-                        colorscale='Viridis',
+                        # 气泡大小映射第三维度评分，增加 15 基础大小确保最小评分也可见
+                        size=triple_stats['score_bubble'] * 12 + 5, 
+                        color=triple_stats['score_x'] + triple_stats['score_y'] + triple_stats['score_bubble'],
+                        colorscale='RdYlGn', # 整体防御力：红(弱) -> 绿(强)
                         showscale=True,
-                        colorbar=dict(title="综合防御力", thickness=15)
+                        colorbar=dict(title="综合防御力", thickness=15),
+                        line=dict(width=1, color='DarkSlateGrey')
                     ),
                     hovertemplate=(
                         "<b>规格: %{text}</b><br>" +
                         f"{dim_x}评分: %{{x:.2f}}<br>" +
                         f"{dim_y}评分: %{{y:.2f}}<br>" +
-                        f"{dim_size}投诉量: %{{marker.size}}次<extra></extra>"
+                        f"{dim_bubble}评分: %{{marker.size/12:.2f}}<extra></extra>"
                     )
                 ))
                 
-                # 绘制象限中线（5分制的中值或均值）
-                fig_axis.add_vline(x=3.5, line_dash="dash", line_color="red", opacity=0.3)
-                fig_axis.add_hline(y=3.5, line_dash="dash", line_color="red", opacity=0.3)
+                # 设置 3.5 分为“及格线”十字准星
+                fig_triple.add_vline(x=3.5, line_dash="dash", line_color="orange", opacity=0.4)
+                fig_triple.add_hline(y=3.5, line_dash="dash", line_color="orange", opacity=0.4)
 
-                fig_axis.update_layout(
-                    title=f"竞品弱点分布图：{dim_x} vs {dim_y}",
-                    xaxis=dict(title=f"{dim_x} 满意度", range=[1, 5.2], gridcolor='white'),
-                    yaxis=dict(title=f"{dim_y} 满意度", range=[1, 5.2], gridcolor='white'),
+                fig_triple.update_layout(
+                    title=f"SKU 靶向防御力矩阵<br><span style='font-size:12px;color:gray;'>右上角+大尺寸气泡 = 三大痛点完美防御标杆</span>",
+                    xaxis=dict(title=f"{dim_x} 满意度", range=[0.5, 5.5], gridcolor='white'),
+                    yaxis=dict(title=f"{dim_y} 满意度", range=[0.5, 5.5], gridcolor='white'),
                     height=550,
                     margin=dict(l=20, r=20, t=60, b=20),
                     plot_bgcolor='rgba(240,240,240,0.5)'
                 )
-                st.plotly_chart(fig_axis, use_container_width=True)
+                st.plotly_chart(fig_triple, use_container_width=True)
             else:
-                st.info("💡 SKU 维度数据较稀疏，无法拆解坐标轴。")
+                st.info("💡 当前 SKU 样本在选定维度的评价数据不足，无法构建评分矩阵。")
 
         # --- c4: 人群 x 价格带 “错位”分析 (PMF) ---
         with c4:
