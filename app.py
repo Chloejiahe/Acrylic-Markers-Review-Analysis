@@ -1033,6 +1033,7 @@ if not df.empty:
                 paper_bgcolor='white',            # 建议底色设为纯白而非透明
                 plot_bgcolor='white'
             )
+            st.plotly_chart(fig_sankey, use_container_width=True)
             
             # 5. 增强型解读
             top_path = step2.sort_values('count', ascending=False).iloc[0]
