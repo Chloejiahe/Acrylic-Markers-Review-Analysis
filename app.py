@@ -710,17 +710,17 @@ if not df.empty:
 
         with c1:
             # 1. 人群饼图
-            role_df = sub_df[sub_df['feat_用户身份'] != "未提及"]['feat_用户身份'].value_counts().reset_index()
-            fig_pie = go.Figure(data=[go.Pie(labels=role_df['feat_用户身份'], values=role_df['count'], hole=.4)])
+            role_df = sub_df[sub_df['feat_User_Role'] != "未提及"]['feat_User_Role'].value_counts().reset_index()
+            fig_pie = go.Figure(data=[go.Pie(labels=role_df['feat_User_Role'], values=role_df['count'], hole=.4)])
             fig_pie.update_layout(title="用户画像分布 (Who is buying?)", height=400)
             st.plotly_chart(fig_pie, use_container_width=True)
 
         with c2:
             # 2. 场景热力图 (人群 vs 场景)
             # 剔除未提及数据
-            heat_data = sub_df[(sub_df['feat_用户身份'] != "未提及") & (sub_df['feat_使用场景'] != "未提及")]
+            heat_data = sub_df[(sub_df['feat_User_Role'] != "未提及") & (sub_df['feat_Usage'] != "未提及")]
             if not heat_data.empty:
-                ct = pd.crosstab(heat_data['feat_用户身份'], heat_data['feat_使用场景'])
+                ct = pd.crosstab(heat_data['feat_User_Role'], heat_data['feat_Usage'])
                 fig_heat = go.Figure(data=go.Heatmap(
                     z=ct.values, x=ct.columns, y=ct.index,
                     colorscale='GnBu', texttemplate="%{z}", hoverinfo='z'
