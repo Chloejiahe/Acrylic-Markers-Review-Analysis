@@ -1029,118 +1029,96 @@ if not df.empty:
         
         st.markdown("---")
 
-        # --- 板块 3: 核心痛点维度评分矩阵 (人群动态维度优化版) ---
-        st.markdown("#### 🚀 核心痛点维度评分矩阵 (Dynamic Persona-Pain Matrix)")
+# --- 升级版块 3: 维度表现四象限决策图 (IV Analysis) ---
+        st.markdown("#### 🎯 维度优劣势四象限决策 (Importance-Performance Analysis)")
+        st.caption("基于 **关注度 (提及频次)** 与 **满意度 (平均评分)** 的四象限分析，帮助定位改进优先级。")
+
+        # 1. 动态计算所有维度的表现
+        dim_performance = []
+        for dim, mapping in FEATURE_DIC.items():
+            keywords = []
+            for sub in mapping.values(): keywords.extend(sub)
+            if not keywords: continue
+            
+            # 正则匹配
+            pat = '|'.join([re.escape(k) for k in keywords if k.strip()])
+            matched = sub_df[sub_df['s_text'].str.contains(pat, na=False, flags=re.IGNORECASE)]
+            
+            if len(matched) > 5: # 忽略极小样本
+                dim_performance.append({
+                    '维度': dim,
+                    '关注度(声量)': len(matched),
+                    '满意度(评分)': matched['Rating'].mean(),
+                    '负面占比': (matched['s_pol'] < 0).mean()
+                })
         
-        # 预先获取全局 Top 3 维度作为兜底
-        global_top_3 = analysis_res.sort_values("机会指数", ascending=False)['维度'].tolist()[:3]
-        # 兜底：如果全局维度都不够3个，手动补齐
-        while len(global_top_3) < 3:
-            global_top_3.append("其他")
-
-        if not analysis_res.empty:
-            # 获取样本量最大的前 3 个身份
-            top_roles = sub_df[sub_df['feat_User_Role'] != "未提及"]['feat_User_Role'].value_counts().head(3).index.tolist()
+        if dim_performance:
+            perf_df = pd.DataFrame(dim_performance)
             
-            def draw_sku_bubble_chart(data_source, title_label, suffix, local_dims):
-                # 1. 维度对齐逻辑：确保始终有 3 个有效维度
-                valid_local = [d for d in local_dims if d and d != "未提及"]
-                final_dims = valid_local + [d for d in global_top_3 if d not in valid_local]
-                d_x, d_y, d_b = final_dims[0], final_dims[1], final_dims[2]
-                
-                plot_data = []
-                all_skus = data_source['sku_spec'].unique()
-                
-                for sku in all_skus:
-                    sku_df = data_source[data_source['sku_spec'] == sku]
-                    
-                    def get_metric(target_df, dimension):
-                        if dimension == "其他": return 3.0, 0
-                        keywords = []
-                        if dimension in FEATURE_DIC:
-                            for sub_cat in FEATURE_DIC[dimension].values():
-                                keywords.extend(sub_cat)
-                        
-                        if not keywords: return None, 0
-                        pat = '|'.join([re.escape(k) for k in keywords if k.strip()])
-                        matched = target_df[target_df['s_text'].str.contains(pat, na=False, flags=re.IGNORECASE)]
-                        return (matched['Rating'].mean(), len(matched)) if not matched.empty else (None, 0)
-                    
-                    sc_x, _ = get_metric(sku_df, d_x)
-                    sc_y, _ = get_metric(sku_df, d_y)
-                    sc_b, _ = get_metric(sku_df, d_b)
-                    
-                    # 只要有一维度有分就记录
-                    if any(v is not None for v in [sc_x, sc_y, sc_b]):
-                        plot_data.append({
-                            'sku': str(sku),
-                            'score_x': sc_x if sc_x is not None else 3.0,
-                            'score_y': sc_y if sc_y is not None else 3.0,
-                            # 【修改点1】明确保存一个用于显示的原始数值，避免 None
-                            'score_bubble_val': sc_b if sc_b is not None else 3.0 
-                        })
-                
-                res_df = pd.DataFrame(plot_data)
-                if res_df.empty:
-                    st.warning(f"⚠️ {title_label} 匹配维度下数据量过小")
-                    return
-
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(
-                    x=res_df['score_x'], 
-                    y=res_df['score_y'],
-                    mode='markers+text',
-                    text=res_df['sku'],
-                    textposition="top center",
-                    # 【修改点2】将原始数值传入 customdata
-                    customdata=res_df['score_bubble_val'], 
-                    marker=dict(
-                        # 气泡大小依然用数值控制，但为了视觉效果乘倍率
-                        size=res_df['score_bubble_val'] * 12, 
-                        color=res_df['score_x'] + res_df['score_y'],
-                        colorscale='RdYlGn', showscale=True,
-                        line=dict(width=1, color='DarkSlateGrey')
-                    ),
-                    # 【修改点3】hovertemplate 读取 customdata 而不是计算 marker.size
-                    hovertemplate = (
-                        f"<b>%{{text}}</b><br>"
-                        f"{d_x}: %{{x:.2f}}<br>"
-                        f"{d_y}: %{{y:.2f}}<br>"
-                        f"{d_b}(气泡): %{{customdata:.2f}}<extra></extra>"
-                    )
-                ))
-                
-                fig.update_layout(
-                    title=f"{title_label}：维度表现分布",
-                    xaxis=dict(title=f"{d_x} 评分 (1-5)", range=[0.8, 5.2]),
-                    yaxis=dict(title=f"{d_y} 评分 (1-5)", range=[0.8, 5.2]),
-                    height=500
-                )
-                
-                st.plotly_chart(fig, width="stretch", key=f"bubble_{sub_name}_{suffix}")
-
-            # --- Tabs 展现层 ---
-            tab_list = st.tabs(["📊 总体分析"] + [f"👤 {r}" for r in top_roles])
+            # 计算中位数作为象限分割线
+            x_median = perf_df['关注度(声量)'].median()
+            y_avg = 4.0 # 设定 4.0 为及格线，或者用 perf_df['满意度(评分)'].mean()
             
-            with tab_list[0]:
-                draw_sku_bubble_chart(sub_df, "全量数据", "total", global_top_3)
+            # 2. 绘制四象限图
+            fig_iv = go.Figure()
             
-            for i, role in enumerate(top_roles):
-                with tab_list[i+1]:
-                    role_sub = sub_df[sub_df['feat_User_Role'] == role]
-                    
-                    # 动态识别该人群关注维度
-                    role_neg_text = " ".join(role_sub[role_sub['s_pol'] < 0]['s_text'].astype(str).tolist())
-                    dim_counts = {}
-                    for dim, mapping in FEATURE_DIC.items():
-                        all_keys = [k for sub in mapping.values() for k in sub]
-                        count = sum(1 for k in all_keys if k.lower() in role_neg_text.lower())
-                        if count > 0: dim_counts[dim] = count
-                    
-                    role_specific_dims = sorted(dim_counts, key=dim_counts.get, reverse=True)[:3]
-                    
-                    st.caption(f"🎯 **{role}** 的核心关注维度：{', '.join(role_specific_dims) if role_specific_dims else '通用维度'}")
-                    draw_sku_bubble_chart(role_sub, role, f"role_{i}", role_specific_dims)
+            # 添加点
+            fig_iv.add_trace(go.Scatter(
+                x=perf_df['关注度(声量)'],
+                y=perf_df['满意度(评分)'],
+                mode='markers+text',
+                text=perf_df['维度'],
+                textposition="top center",
+                marker=dict(
+                    size=perf_df['关注度(声量)'], # 气泡大小也可反映声量，或者固定大小
+                    sizemode='area',
+                    sizeref=2. * max(perf_df['关注度(声量)']) / (40.**2),
+                    color=perf_df['满意度(评分)'],
+                    colorscale='RdYlGn',
+                    showscale=True
+                ),
+                hovertemplate="<b>%{text}</b><br>关注度: %{x}<br>评分: %{y:.2f}<br>负评率: %{marker.color:.1%}<extra></extra>"
+            ))
+            
+            # 3. 绘制象限背景色 (Action Zones)
+            # 区域 A: 亟待改进 (高关注 + 低分) -> 红色背景
+            fig_iv.add_shape(type="rect",
+                x0=x_median, y0=1, x1=perf_df['关注度(声量)'].max()*1.1, y1=y_avg,
+                fillcolor="red", opacity=0.1, layer="below", line_width=0,
+            )
+            # 区域 B: 优势保持 (高关注 + 高分) -> 绿色背景
+            fig_iv.add_shape(type="rect",
+                x0=x_median, y0=y_avg, x1=perf_df['关注度(声量)'].max()*1.1, y1=5,
+                fillcolor="green", opacity=0.1, layer="below", line_width=0,
+            )
+            
+            # 添加象限标签
+            fig_iv.add_annotation(x=perf_df['关注度(声量)'].max(), y=3.5, text="🚨 <b>急需改进</b>", showarrow=False, font=dict(color="red"))
+            fig_iv.add_annotation(x=perf_df['关注度(声量)'].max(), y=4.8, text="🌟 <b>核心优势区</b>", showarrow=False, font=dict(color="green"))
+            fig_iv.add_annotation(x=0, y=3.5, text="📉 次要改进区", showarrow=False, font=dict(color="gray"))
+            fig_iv.add_annotation(x=0, y=4.8, text="🛡️ 锦上添花区", showarrow=False, font=dict(color="gray"))
+
+            # 布局优化
+            fig_iv.update_layout(
+                title="维度重要性-表现矩阵 (IV Matrix)",
+                xaxis_title="关注度 (提及次数)",
+                yaxis_title="用户满意度 (1-5分)",
+                height=500,
+                showlegend=False
+            )
+            # 添加分割线
+            fig_iv.add_hline(y=y_avg, line_dash="dash", line_color="gray")
+            fig_iv.add_vline(x=x_median, line_dash="dash", line_color="gray")
+            
+            st.plotly_chart(fig_iv, use_container_width=True, key=f"iv_chart_{sub_name}")
+            
+            # 智能解读
+            urgent_fix = perf_df[(perf_df['关注度(声量)'] > x_median) & (perf_df['满意度(评分)'] < y_avg)]
+            if not urgent_fix.empty:
+                items = ", ".join(urgent_fix['维度'].tolist())
+                st.error(f"⚠️ **警报：** {items} 属于高频关注但低分维度，直接影响转化，请优先优化！")
+            else:
+                st.success("✅ 当前没有处于'急需改进区'的核心维度，产品基础体验良好。")
             
         
         # --- 板块 5: 动机与核心痛点深度关联分析 ---
