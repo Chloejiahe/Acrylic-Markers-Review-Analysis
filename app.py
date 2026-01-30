@@ -962,83 +962,96 @@ if not df.empty:
             st.info("样本量不足以生成热力图")
         st.markdown("---")
 
-        # --- 板块 3: 核心痛点靶向评分矩阵 (独占一行) ---
-# --- 板块 3: 核心用户群体验分布矩阵 ---
-        st.markdown("#### 🎯 核心用户群体验评价矩阵 (User Persona Experience Matrix)")
-
+        # --- 板块 3: 核心痛点维度评分矩阵 (气泡图 + 人群交互下钻) ---
+        st.markdown("#### 🚀 核心痛点维度评分矩阵 (Pain-point Bubble Matrix)")
+        
         if not pain_df.empty and len(pain_df) >= 3:
-            # 1. 获取 Top 3 痛点维度和 Top 3 用户身份
-            top_dims = pain_df['维度'].tolist()[:3]
+            # 1. 确定核心维度与 Top 3 身份
+            dims = pain_df['维度'].tolist()[:3]
+            dim_x, dim_y, dim_bubble = dims[0], dims[1], dims[2]
+            
+            # 提取样本量最大的前 3 个身份
             top_roles = sub_df[sub_df['feat_User_Role'] != "未提及"]['feat_User_Role'].value_counts().head(3).index.tolist()
             
-            if not top_roles:
-                st.info("💡 暂无明确的用户身份数据，无法生成深度评价矩阵。")
-            else:
-                # 2. 数据透视逻辑：计算 SKU x 角色 x 维度的平均分
-                matrix_data = []
-                all_skus = sub_df['sku_spec'].unique()
-
-                for role in top_roles:
-                    role_df = sub_df[sub_df['feat_User_Role'] == role]
-                    for sku in all_skus:
-                        sku_df = role_df[role_df['sku_spec'] == sku]
-                        if sku_df.empty: continue
-                        
-                        row = {'SKU': sku, 'User_Role': role}
-                        has_data = False
-                        
-                        for dim in top_dims:
-                            # 复用之前的维度关键词匹配评分逻辑
-                            keywords = []
-                            for keys in FEATURE_DIC.get(dim, {}).values(): keywords.extend(keys)
-                            pat = '|'.join([re.escape(k) for k in keywords if k.strip()])
-                            matched = sku_df[sku_df['s_text'].str.contains(pat, na=False, flags=re.IGNORECASE)]
-                            
-                            score = matched['Rating'].mean() if not matched.empty else None
-                            row[dim] = score
-                            if score is not None: has_data = True
-                        
-                        if has_data:
-                            matrix_data.append(row)
-
-                df_matrix = pd.DataFrame(matrix_data)
-
-                if not df_matrix.empty:
-                    # 3. 使用 Plotly Express 绘制分面热力图
-                    # 为了美观，我们将 SKU 名字简化处理
-                    df_matrix['SKU_Short'] = df_matrix['SKU'].apply(lambda x: "-".join(str(x).split('-')[:-1]) if '-' in str(x) else x)
+            # --- 定义内部绘图函数，确保逻辑复用 ---
+            def draw_sku_bubble_chart(data_source, title_label):
+                plot_data = []
+                all_skus = data_source['sku_spec'].unique()
+                
+                for sku in all_skus:
+                    sku_df = data_source[data_source['sku_spec'] == sku]
                     
-                    # 转换数据格式以适配热力图 (SKU, 维度, 分数, 角色)
-                    df_melted = df_matrix.melt(id_vars=['SKU_Short', 'User_Role'], value_vars=top_dims, 
-                                             var_name='Dimension', value_name='Score')
-
-                    import plotly.express as px
-                    fig_matrix = px.density_heatmap(
-                        df_melted, 
-                        x="Dimension", 
-                        y="SKU_Short", 
-                        z="Score",
-                        facet_col="User_Role",
-                        color_continuous_scale="RdYlGn", # 红黄绿配色
-                        range_color=[1, 5],
-                        text_auto=".1f",
-                        title="Top 3 人群在不同 SKU 上的维度体验分布 (1-5分)",
-                        labels={'Score': '满意度评分', 'SKU_Short': '产品规格', 'Dimension': '评价维度'},
-                        height=500
-                    )
-
-                    fig_matrix.update_layout(
-                        margin=dict(t=80, b=40, l=40, r=40),
-                        coloraxis_colorbar=dict(title="评分")
-                    )
-                    st.plotly_chart(fig_matrix, use_container_width=True)
+                    def get_metric(target_df, dimension):
+                        keywords = []
+                        for keys in FEATURE_DIC.get(dimension, {}).values(): keywords.extend(keys)
+                        pat = '|'.join([re.escape(k) for k in keywords if k.strip()])
+                        matched = target_df[target_df['s_text'].str.contains(pat, na=False, flags=re.IGNORECASE)]
+                        return (matched['Rating'].mean(), len(matched)) if not matched.empty else (None, 0)
                     
-                    # 4. 自动生成一个深度的差异化洞察
-                    st.info("🔍 **体验差异化诊断：** 观察上方矩阵，如果同一个 SKU 在不同身份下颜色差异巨大，说明该产品存在明显的‘人群适配性’问题。")
-                else:
-                    st.warning("⚠️ 样本量太少，无法在 SKU-身份-维度 三个层面上聚合出有效分数。")
+                    sc_x, _ = get_metric(sku_df, dim_x)
+                    sc_y, _ = get_metric(sku_df, dim_y)
+                    sc_b, _ = get_metric(sku_df, dim_bubble)
+                    
+                    if any(v is not None for v in [sc_x, sc_y, sc_b]):
+                        plot_data.append({
+                            'sku': sku,
+                            'score_x': sc_x if sc_x else 2.5, # 默认中间值，避免图面留白
+                            'score_y': sc_y if sc_y else 2.5,
+                            'score_bubble': sc_b if sc_b else 1.0
+                        })
+                
+                res_df = pd.DataFrame(plot_data)
+                if res_df.empty:
+                    st.warning(f"⚠️ {title_label} 下暂无足够维度数据")
+                    return
+
+                # SKU 名称美化
+                def format_name(n):
+                    parts = str(n).split('-')
+                    core = "-".join(parts[:-1]) if len(parts) > 1 else n
+                    return core.replace("-", "<br>")
+
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    x=res_df['score_x'], y=res_df['score_y'],
+                    mode='markers+text',
+                    text=res_df['sku'].apply(format_name),
+                    textposition="top center",
+                    marker=dict(
+                        size=res_df['score_bubble'] * 15, # 气泡缩放倍数
+                        color=res_df['score_x'] + res_df['score_y'],
+                        colorscale='RdYlGn', showscale=True,
+                        colorbar=dict(title="满意度指数"),
+                        line=dict(width=1, color='DarkSlateGrey')
+                    ),
+                    hovertemplate=f"<b>规格: %{{text}}</b><br>{dim_x}: %{{x:.2f}}<br>{dim_y}: %{{y:.2f}}<br>{dim_bubble}: %{{marker.size/15:.2f}}<extra></extra>"
+                ))
+                
+                fig.update_layout(
+                    title=f"产品表现分布 - {title_label}",
+                    xaxis=dict(title=f"{dim_x} 评分", range=[0.5, 5.5], gridcolor='lightgray'),
+                    yaxis=dict(title=f"{dim_y} 评分", range=[0.5, 5.5], gridcolor='lightgray'),
+                    height=600, plot_bgcolor='white'
+                )
+                # 辅助及格线
+                fig.add_hline(y=3.5, line_dash="dash", line_color="red", opacity=0.3)
+                fig.add_vline(x=3.5, line_dash="dash", line_color="red", opacity=0.3)
+                st.plotly_chart(fig, use_container_width=True, key=f"bubble_{title_label}")
+
+            # 2. 创建交互式 Tabs
+            tab_list = st.tabs(["📊 总体全量分析"] + [f"👤 人群：{r}" for r in top_roles])
+            
+            with tab_list[0]:
+                st.caption(f"矩阵图例：X={dim_x} | Y={dim_y} | 气泡大小={dim_bubble}")
+                draw_sku_bubble_chart(sub_df, "全量数据")
+                
+            for i, role in enumerate(top_roles):
+                with tab_list[i+1]:
+                    role_sub = sub_df[sub_df['feat_User_Role'] == role]
+                    st.caption(f"针对 **{role}** 人群的维度评分矩阵")
+                    draw_sku_bubble_chart(role_sub, role)
         else:
-            st.info("💡 核心痛点不足 3 个，无法构建对比矩阵。")
+            st.info("💡 核心痛点不足 3 个，无法构建三维气泡矩阵。")
             
         
 # --- 板块 5: 动机与核心痛点深度关联分析 ---
