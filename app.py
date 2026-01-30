@@ -962,7 +962,7 @@ if not df.empty:
             st.info("样本量不足以生成热力图")
         st.markdown("---")
 
-# --- 板块 3: 核心痛点维度评分矩阵 (人群动态维度优化版) ---
+       # --- 板块 3: 核心痛点维度评分矩阵 (人群动态维度优化版) ---
         st.markdown("#### 🚀 核心痛点维度评分矩阵 (Dynamic Persona-Pain Matrix)")
         
         # 预先获取全局 Top 3 维度作为兜底
@@ -1015,18 +1015,25 @@ if not df.empty:
                     return
 
                 fig = go.Figure()
+               # 修复后的 hovertemplate 逻辑
                 fig.add_trace(go.Scatter(
                     x=res_df['score_x'], y=res_df['score_y'],
                     mode='markers+text',
                     text=res_df['sku'],
                     textposition="top center",
                     marker=dict(
-                        size=res_df['score_bubble'] * 12, # 调整气泡系数
+                        size=res_df['score_bubble'] * 12,
                         color=res_df['score_x'] + res_df['score_y'],
                         colorscale='RdYlGn', showscale=True,
                         line=dict(width=1, color='DarkSlateGrey')
                     ),
-                    hovertemplate=f"<b>%{ {text} }</b><br>{d_x}: %{ {x:.2f} }<br>{d_y}: %{ {y:.2f} }<br>{d_b}(气泡): %{ {marker.size/12:.2f} }<extra></extra>"
+                    # 使用 {{ }} 来转义，使 Plotly 能识别 %{x}
+                    hovertemplate = (
+                        f"<b>%{{text}}</b><br>"
+                        f"{d_x}: %{{x:.2f}}<br>"
+                        f"{d_y}: %{{y:.2f}}<br>"
+                        f"{d_b}(气泡): %{{marker.size/12:.2f}}<extra></extra>"
+                    )
                 ))
                 
                 fig.update_layout(
