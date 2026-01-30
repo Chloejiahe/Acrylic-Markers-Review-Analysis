@@ -962,6 +962,22 @@ if not df.empty:
         # --- 板块 3: 核心痛点维度评分矩阵 (人群动态维度优化版) ---
         st.markdown("#### 🚀 核心痛点维度评分矩阵 (Dynamic Persona-Pain Matrix)")
         
+        # --- 新增解说板块 ---
+        with st.container():
+            col_info1, col_info2 = st.columns([2, 1])
+            with col_info1:
+                st.markdown("""
+                **💡 矩阵读法指南：**
+                * **坐标轴：** 横轴、纵轴及气泡大小代表该人群最关注的三个痛点维度。
+                * **气泡位置：** 越靠近**右上角**，说明该 SKU 表现越完美；靠近**左下角**则是有缺陷。
+                * **颜色深浅：** 综合评分体现，**绿色**代表安全，**红色**代表该 SKU 存在严重负面评价。
+                """)
+            with col_info2:
+                st.info("""
+                **🎯 决策价值：**
+                通过切换下方【身份标签】，可以发现不同人群对 SKU 的不满点是否存在**错位**，从而寻找特定人群的切入机会。
+                """)
+                
         # 预先获取全局 Top 3 维度作为兜底
         global_top_3 = analysis_res.sort_values("机会指数", ascending=False)['维度'].tolist()[:3]
         # 兜底：如果全局维度都不够3个，手动补齐
