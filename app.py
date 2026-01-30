@@ -815,7 +815,7 @@ if not df.empty:
         else:
             st.success("✨ 所有维度表现良好，满意度均在 60% 以上！")
 
-# --- 7. 用户原声词云分析 (情感对比版：4-5星 vs 1-3星) ---
+        # --- 7. 用户原声词云分析 (情感对比版) ---
         st.markdown("---")
         st.markdown("### ☁️ 竞品原声情感对比词云")
         
@@ -824,42 +824,44 @@ if not df.empty:
         custom_garbage = {'marker', 'markers', 'pen', 'pens', 'product', 'really', 'will', 'bought', 'set', 'get', 'much', 'even', 'color', 'paint', 'colors', 'work', 'good', 'great', 'love', 'used', 'using', 'actually', 'amazon', 'br'}
         eng_stopwords.update(custom_garbage)
 
-        # 1. 准备数据：严格划分区间，确保包含小数点数据
-        # 优势区：Rating >= 4.0
+        # 1. 准备数据
         pos_df = sub_df[sub_df['Rating'] >= 4.0]
-        pos_text = " ".join(pos_df['s_text'].astype(str).tolist())
+        # 增加清洗：转小写，防止因为大小写导致重复
+        pos_text = " ".join(pos_df['s_text'].astype(str).str.lower().tolist())
         
-        # 痛点区：Rating < 4.0 (即 1-3.9分，涵盖了你说的 1-3 板块)
         neg_df = sub_df[sub_df['Rating'] < 4.0]
-        neg_text = " ".join(neg_df['s_text'].astype(str).tolist())
+        neg_text = " ".join(neg_df['s_text'].astype(str).str.lower().tolist())
 
         col_left, col_right = st.columns(2)
 
         with col_left:
             st.subheader("🟢 高分区 (4.0-5.0 ⭐)")
-            st.caption(f"样本量: {len(pos_df)} 条评论")
-            if len(pos_text) > 20:
+            st.caption(f"样本量: {len(pos_df)}")
+            if len(pos_text.strip()) > 30:
                 wc_pos = WordCloud(
                     width=500, height=400, background_color='white',
-                    colormap='Greens', max_words=40, stopwords=eng_stopwords,
-                    collocations=True # 包含词组，如 "vibrant colors"
+                    colormap='Greens', max_words=50, stopwords=eng_stopwords,
+                    collocations=True,
+                    random_state=42  # 固定随机种子
                 ).generate(pos_text)
-                st.image(wc_pos.to_array(), use_container_width=True)
+                # 使用 unique 的 key 强制刷新渲染
+                st.image(wc_pos.to_array(), use_container_width=True, caption="优势关键词")
             else:
-                st.info("💡 该子类目暂无足够的高分评价。")
+                st.info("💡 样本量不足以生成高分词云")
 
         with col_right:
             st.subheader("🔴 低分区 (1.0-3.9 ⭐)")
-            st.caption(f"样本量: {len(neg_df)} 条评论")
-            if len(neg_text) > 20:
+            st.caption(f"样本量: {len(neg_df)}")
+            if len(neg_text.strip()) > 30:
                 wc_neg = WordCloud(
                     width=500, height=400, background_color='white',
-                    colormap='Reds', max_words=40, stopwords=eng_stopwords,
-                    collocations=True
+                    colormap='Reds', max_words=50, stopwords=eng_stopwords,
+                    collocations=True,
+                    random_state=24  # 使用不同的随机种子区分
                 ).generate(neg_text)
-                st.image(wc_neg.to_array(), use_container_width=True)
+                st.image(wc_neg.to_array(), use_container_width=True, caption="痛点关键词")
             else:
-                st.success("✨ 该竞品表现极其稳健，几乎没有中低分评价。")
+                st.success("✨ 表现稳健，无明显低分痛点词")
                 
         # --- 8. 原声溯源 (Truth Laboratory) ---
         st.write("")
