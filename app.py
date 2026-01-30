@@ -1040,51 +1040,167 @@ if not df.empty:
         else:
             st.info("💡 核心痛点不足 3 个，无法构建三维评价矩阵。")
             
-        # --- 板块 4: PMF 错位分析 (独占一行) ---
-        st.markdown("#### 🔬 人群 x 价格带 满意度偏离 (PMF)")
-        role_col = 'feat_User_Role'
-        pmf_base = sub_df[sub_df[role_col] != "未提及"].copy()
-        if not pmf_base.empty:
-            pmf_base['price_segment'] = pmf_base['sku_spec'].apply(lambda x: x.split('-')[-1] if '-' in str(x) else 'Other')
-            pmf_pivot = pmf_base.pivot_table(index=role_col, columns='price_segment', values='Rating', aggfunc='mean').fillna(0)
-            fig_pmf = go.Figure()
-            for segment in pmf_pivot.columns:
-                fig_pmf.add_trace(go.Bar(name=segment, x=pmf_pivot.index, y=pmf_pivot[segment]))
-            fig_pmf.update_layout(barmode='group', height=500)
-            st.plotly_chart(fig_pmf, use_container_width=True)
+        # --- 板块 4: 深度 PMF 分析 (人群 x 维度 x 价格带) ---
+        st.markdown(f"#### 🔬 {persona_dim} x 核心维度 匹配度分析 (PMF)")
+        
+        # 4.1 准备数据：联动上面选择的 persona_dim (target_col)
+        pmf_df = sub_df[(sub_df[target_col].notna()) & (sub_df[target_col] != "未提及")].copy()
+        
+        if not pmf_df.empty and not pain_df.empty:
+            # 提取价格带
+            pmf_df['price_segment'] = pmf_df['sku_spec'].apply(lambda x: x.split('-')[-1] if '-' in str(x) else 'Other')
+            
+            # 获取前三个核心分析维度 (来自你之前的 analysis_res)
+            top_dims = pain_df['维度'].tolist()[:3]
+            
+            # 增加一个交互：让用户选择想看哪个具体维度的匹配情况
+            selected_pmf_dim = st.selectbox(
+                "选择要交叉分析的体验维度:",
+                options=top_dims,
+                key=f"pmf_dim_selector_{sub_name}"
+            )
+
+            # 4.2 计算该维度在不同人群和价格带下的平均分
+            # 注意：这里需要根据 FEATURE_DIC 过滤出提到该维度的评论再算分
+            def get_dim_score(group_df, dimension):
+                if dimension not in FEATURE_DIC: return None
+                keywords = []
+                for keys in FEATURE_DIC[dimension].values(): keywords.extend(keys)
+                pat = '|'.join([re.escape(k) for k in keywords if k.strip()])
+                matched = group_df[group_df['s_text'].str.contains(pat, na=False, flags=re.IGNORECASE)]
+                return matched['Rating'].mean() if not matched.empty else None
+
+            # 构建透视表数据
+            pmf_results = []
+            for (role, price), group in pmf_df.groupby([target_col, 'price_segment']):
+                score = get_dim_score(group, selected_pmf_dim)
+                if score:
+                    pmf_results.append({
+                        '人群': role,
+                        '价格带': price,
+                        '维度评分': round(score, 2)
+                    })
+            
+            plot_df = pd.DataFrame(pmf_results)
+
+            if not plot_df.empty:
+                # 4.3 绘制更具表达力的图表：分面柱状图 (Facetted Bar)
+                import plotly.express as px
+                
+                fig_pmf = px.bar(
+                    plot_df, 
+                    x='人群', 
+                    y='维度评分', 
+                    color='价格带',
+                    barmode='group',
+                    text='维度评分',
+                    color_discrete_sequence=px.colors.qualitative.Pastel,
+                    title=f"不同人群在各价格带对【{selected_pmf_dim}】的真实评价"
+                )
+                
+                # 增加一条基准线（及格线 3.5）
+                fig_pmf.add_hline(y=3.5, line_dash="dot", line_color="red", annotation_text="及格线")
+                
+                fig_pmf.update_layout(
+                    height=500,
+                    yaxis=dict(title="维度满意度评分 (1-5)", range=[1, 5.5]),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                )
+                st.plotly_chart(fig_pmf, use_container_width=True)
+                
+                # 4.4 自动生成 PMF 偏离诊断
+                low_points = plot_df[plot_df['维度评分'] < 3.5]
+                if not low_points.empty:
+                    worst = low_points.sort_values('维度评分').iloc[0]
+                    st.error(f"⚠️ **PMF 失效预警：** **{worst['人群']}** 对 **{worst['价格带']}** 产品的 **{selected_pmf_dim}** 极度不满 ({worst['维度评分']}分)。这说明该定价下的产品性能未达到该人群的心理预期。")
+                else:
+                    st.success(f"✅ **PMF 匹配良好：** 各个人群对 **{selected_pmf_dim}** 的评分均在及格线以上。")
+
+            else:
+                st.info(f"🔍 样本中提及 {selected_pmf_dim} 的评论不足，无法生成交叉分布图。")
+        
         st.markdown("---")
         
-        # 5. 动机与机会指数关联分析
-        st.write("")
+# --- 板块 5: 动机与核心痛点深度关联分析 ---
         st.markdown("#### 💡 购买动机与改进优先序 (Motivation & Opportunity)")
-        
-        # 这里的逻辑：分析不同动机下的情感表现
-        motive_df = sub_df[sub_df['feat_Motivation'] != "未提及"]
-        if not motive_df.empty:
-            motive_stats = motive_df.groupby('feat_Motivation').agg(
-                count=('s_text', 'count'),
-                score=('Rating', 'mean')
-            ).reset_index()
-            
-            # 计算动机机会指数：声量 / 评分 (评分越低、声量越高，指数越高)
-            motive_stats['opp_idx'] = (motive_stats['count'] / motive_stats['score']).round(2)
-            
-            col_m1, col_m2 = st.columns([3, 1])
-            with col_m1:
-                fig_motive = go.Figure(go.Bar(
-                    y=motive_stats['feat_Motivation'], x=motive_stats['opp_idx'],
-                    orientation='h', marker_color='#e67e22',
-                    text=motive_stats['opp_idx'], textposition='outside'
-                ))
-                fig_motive.update_layout(title="基于购买动机的机会指数 (数值越高代表需求未被满足)", height=300)
-                st.plotly_chart(fig_motive, use_container_width=True)
-            with col_m2:
-                st.write("")
-                st.write("")
-                top_motive = motive_stats.sort_values('opp_idx', ascending=False).iloc[0]
-                st.error(f"**核心机会点：** \n\n 针对 **{top_motive['feat_Motivation']}** 动机进入的用户，目前满意度仅为 **{round(top_motive['score'],1)}**，建议作为下代产品核心卖点优化。")
 
+        motive_df = sub_df[sub_df['feat_Motivation'] != "未提及"].copy()
         
+        # 引用之前分析出的 Top 3 痛点维度，确保全篇逻辑闭环
+        if not motive_df.empty and not pain_df.empty:
+            top_dims = pain_df['维度'].tolist()[:3]
+            
+            # 定义一个函数：计算特定动机下，各维度的表现
+            def get_motive_dim_analysis(df, dims):
+                motive_results = []
+                for motive in df['feat_Motivation'].unique():
+                    m_sub = df[df['feat_Motivation'] == motive]
+                    m_count = len(m_sub)
+                    m_avg_rating = m_sub['Rating'].mean()
+                    
+                    # 在该动机群体中，计算最差的一个维度
+                    dim_scores = {}
+                    for d in dims:
+                        # 简单的评分逻辑映射（可重用之前的匹配逻辑）
+                        keywords = []
+                        for keys in FEATURE_DIC.get(d, {}).values(): keywords.extend(keys)
+                        pat = '|'.join([re.escape(k) for k in keywords if k.strip()])
+                        matched = m_sub[m_sub['s_text'].str.contains(pat, na=False, flags=re.IGNORECASE)]
+                        if not matched.empty:
+                            dim_scores[d] = matched['Rating'].mean()
+                    
+                    # 找出得分最低的维度作为“首要病因”
+                    worst_dim = min(dim_scores, key=dim_scores.get) if dim_scores else "综合体验"
+                    worst_score = dim_scores.get(worst_dim, m_avg_rating)
+                    
+                    # 重新定义机会指数：动机声量 * (5 - 维度评分) 
+                    # 这样分值越低，指数越高，逻辑更符合直觉
+                    opp_idx = round(m_count * (5 - worst_score), 2)
+                    
+                    motive_results.append({
+                        '动机': motive,
+                        '样本量': m_count,
+                        '总体评分': round(m_avg_rating, 2),
+                        '首要痛点维度': worst_dim,
+                        '痛点评分': round(worst_score, 2),
+                        '机会指数': opp_idx
+                    })
+                return pd.DataFrame(motive_results)
+
+            m_stats = get_motive_dim_analysis(motive_df, top_dims)
+            m_stats = m_stats.sort_values('机会指数', ascending=False)
+
+            # 绘制双轴图：动机声量 vs 痛点评分
+            fig_motive = go.Figure()
+            
+            # 柱状图：机会指数
+            fig_motive.add_trace(go.Bar(
+                x=m_stats['动机'], y=m_stats['机会指数'],
+                name='机会指数',
+                marker_color='#e67e22',
+                text=m_stats['首要痛点维度'], # 柱子上直接标出是哪个维度不行
+                textposition='auto'
+            ))
+
+            fig_motive.update_layout(
+                title="不同购买动机下的改进机会 (指数越高=需求缺口越大)",
+                xaxis_title="购买动机",
+                yaxis_title="机会指数 (声量 x 评分缺口)",
+                height=400,
+                margin=dict(t=50, b=50)
+            )
+            
+            st.plotly_chart(fig_motive, use_container_width=True)
+
+            # 底部诊断：提供具体的执行建议
+            top_m = m_stats.iloc[0]
+            st.warning(f"""
+                🚀 **执行策略建议：**
+                针对以 **{top_m['动机']}** 为动机的用户，最大的改进机会在于 **{top_m['首要痛点维度']}** (该维度分仅 {top_m['痛点评分']})。
+                建议在产品迭代或详情页描述中，重点优化并展示针对该动机的解决方案。
+            """)
+        else:
+            st.info("🔍 动机数据或维度分析不足，无法生成关联矩阵。")
 
 else:
     st.info("💡 请确保数据加载正确。")
