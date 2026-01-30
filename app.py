@@ -445,7 +445,6 @@ CLASSIFICATION_RULES = {
           '机构/批量采购者 (Institutional/Bulk Purchaser)': ['bulk order', 'bulk purchase', 'large order', 'large quantity',  'for the whole class', 'for my classroom', 'classroom set', 'school supplies order','for the office', 'office supply order', 'stocking the office', 'office set','church group', 'for the church', 'community center', 'non-profit', 'for our team', 'event supplies', 'charity donation', 'donation for',
                                       'stock up for the office', 'stock up for the classroom'],
           },
-
         "Gender": {
             '女性 (Female)': ['woman', 'women', 'girl', 'girls', 'she','niece','her','hers', 'wife', 'mother', 'mom', 'daughter', 'girlfriend', 'female', 'sister', 'aunt', 'grandmother', 'niece', 'lady', 'ladies'],
             '男性 (Male)': ['man', 'men', 'nephew','boy', 'boys', 'he', 'his', 'him', 'husband', 'father', 'dad', 'son', 'boyfriend', 'male', 'brother', 'uncle', 'grandfather', 'nephew', 'gentleman']
@@ -480,14 +479,7 @@ CLASSIFICATION_RULES = {
             '文化体验与活动 (Cultural Activities)': ['workshop', 'art event', 'cultural festival', 'live drawing', 'art therapy session', 'community art'],
             '心理疗愈 (Therapeutic Use)': ['for relaxing', 'for relaxation', 'stress relief', 'art therapy', 'therapeutic', 'calming', 'for mindfulness','emotional outlet', 'doodling to relax', 'zen', 'to unwind']
         },
-        "Motivation": {
-            '专业需求-色彩表现': ['high quality pigment', 'high pigment load', 'richly pigmented', 'pure pigment', 'vibrant colors', 'rich colors', 'deep saturation', 'consistent saturation', 'intense colors','lightfast', 'excellent lightfastness', 'lightfastness rating', 'archival quality', 'archival ink', 'museum quality','smooth blending', 'blends seamlessly', 'layering without getting muddy', 'excellent blendability', 'good for glazing', 'lifts cleanly', 'non-staining', 'good staining properties','true to color', 'color accuracy', 'good opacity', 'opaque coverage', 'good transparency'],
-            '专业需求-性能耐用': ['pro grade', 'professional grade', 'reliable for work', 'consistent flow', 'consistent performance', 'durable tip', 'long lasting', 'for professional work', 'serious tool', 'heavy duty', 'withstand pressure', 'workhorse', 'built to last', 'daily driver', 'holds up to heavy use',  'no skipping', 'dependable performance', 'withstands abuse', 'for demanding work'],
-            '基础功能需求': ['for basic use', 'for everyday use', 'for daily use', 'for school', 'for taking notes', 'gets the job done', 'does the job', 'all i need', 'nothing fancy', 'just the basics', 'no frills', 'simple and effective', 'standard use', 'for general use'],
-            '艺术兴趣驱动': ['for my hobby', 'passion for art', 'spark creativity', 'express myself', 'for fun', 'artistic exploration','wanted to try', 'get back into art','for hobby'],
-            '品牌信任': [ 'trusted brand', 'good reputation', 'well-known brand', 'always reliable', 'go-to brand', 'love this brand','stick with this brand', 'brand loyalty',],
-            '性价比驱动': [ 'good value', 'great price', 'affordable', 'on a budget', 'good deal', 'cheap but good', 'cost effective', 'cheaper alternative'],
-            '创新功能吸引': ['innovative feature', 'new feature',  'unique feature', 'special feature','new technology'],
+             
             '外观设计吸引': ['love the design', 'beautiful aesthetic', 'looks good', 'pretty colors', 'minimalist design', 'the look of it', 'elegant design'],
             '包装与开箱体验吸引': ['beautiful packaging', 'great unboxing experience', 'giftable', 'nice box', 'good presentation'],
             '社交驱动-口碑推荐': ['recommendation', 'recommended by', 'my friend recommended', 'my teacher recommended', 'word of mouth', 'told me to buy','saw good reviews'],
@@ -555,20 +547,54 @@ def load_raw_data():
     
     return pd.concat(combined, ignore_index=True) if combined else pd.DataFrame()
 
-# --- 4. 核心分析逻辑 (优化版：引入评分加权与深度透视) ---
-def extract_advanced_features(df):
-    """为 DataFrame 注入人群、场景、动机标签"""
+# --- 在数据加载时应用 Mapping ---
+def process_data_with_mapping(df):
+    """
+    将原始数据的 ASIN 映射为具体的规格名称 (e.g., Multicolor36-fine+dot-LowPrice)
+    """
+    # 假设你的原始数据中有 'ASIN' 或 'Product ID' 列
+    asin_col = 'ASIN' if 'ASIN' in df.columns else ('Parent ASIN' if 'Parent ASIN' in df.columns else None)
+    
+    if asin_col:
+        df['sku_spec'] = df[asin_col].map(USER_CATEGORY_MAPPING).fillna("Other-Unmapped")
+    else:
+        df['sku_spec'] = "Unknown-Spec"
+    
+    return df
+
+# --- 深度提取人群与动机 ---
+def extract_advanced_features_v2(df):
+    """根据你的 CLASSIFICATION_RULES 为每一句评论打标签"""
     for dim_name, sub_dict in CLASSIFICATION_RULES.items():
+        # 清洗列名，例如 "User_Role" -> "feat_User_Role"
+        clean_col_name = "feat_" + dim_name
+        
         def get_tag(text):
+            text_lower = str(text).lower()
             for tag, keywords in sub_dict.items():
-                if any(k in str(text).lower() for k in keywords):
+                if any(k.lower() in text_lower for k in keywords):
                     return tag
             return "未提及"
         
-        # 将维度名称简化为列名
-        col_name = "feat_" + dim_name.split('(')[0].strip()
-        df[col_name] = df['s_text'].apply(get_tag)
+        df[clean_col_name] = df['s_text'].apply(get_tag)
     return df
+
+# --- 4. 核心分析逻辑 (优化版：引入评分加权与深度透视) ---
+def extract_advanced_features_v2(df):
+    for dim_name, sub_dict in CLASSIFICATION_RULES.items():
+        # 统一使用 feat_ 前缀
+        clean_col_name = "feat_" + dim_name
+        
+        def get_tag(text):
+            text_lower = str(text).lower()
+            for tag, keywords in sub_dict.items():
+                if any(k.lower() in text_lower for k in keywords):
+                    return tag
+            return "未提及"
+        
+        df[clean_col_name] = df['s_text'].apply(get_tag)
+    return df
+
 
 def analyze_sentiments(df_sub):
     results = []
@@ -727,46 +753,101 @@ if not df.empty:
         st.markdown("---")
         c3, c4 = st.columns(2)
 
+# --- c3: SKU 规格竞争力矩阵 ---
         with c3:
-            # 3. SKU 规格竞争力矩阵 (Spec Matrix)
-            # 我们将维度作为气泡，X轴为满意度，Y轴为提及频率，大小为机会指数
-            fig_matrix = go.Figure()
-            fig_matrix.add_trace(go.Scatter(
-                x=analysis_res['满意度'],
-                y=analysis_res['亮点'] + analysis_res['痛点'],
-                mode='markers+text',
-                text=analysis_res['维度'],
-                textposition="top center",
-                marker=dict(
-                    size=analysis_res['机会指数'],
-                    sizemode='area',
-                    sizeref=2.*max(analysis_res['机会指数'])/(40.**2),
-                    sizemin=4,
-                    color=analysis_res['维度评分'],
-                    colorscale='RdYlGn',
-                    showscale=True,
-                    colorbar=dict(title="维度评分")
-                )
-            ))
-            fig_matrix.update_layout(
-                title="规格竞争力矩阵 (气泡大小=机会指数)",
-                xaxis_title="满意度 (%)",
-                yaxis_title="声量 (提及总数)",
-                height=500
-            )
-            st.plotly_chart(fig_matrix, use_container_width=True)
+            st.markdown("#### 🚀 SKU 规格表现矩阵 (Spec Performance)")
+            
+            # 按映射后的 sku_spec 分组，计算平均分、讨论声量和差评风险
+            sku_stats = sub_df.groupby('sku_spec').agg(
+                avg_rating=('Rating', 'mean'),
+                vocal_volume=('s_text', 'count'),
+                # 计算差评率（1-3分）作为风险指标
+                neg_rate=('Rating', lambda x: (x <= 3).sum() / len(x) * 100 if len(x) > 0 else 0)
+            ).reset_index()
 
+            if not sku_stats.empty:
+                fig_matrix = go.Figure()
+                fig_matrix.add_trace(go.Scatter(
+                    x=sku_stats['avg_rating'],
+                    y=sku_stats['vocal_volume'],
+                    mode='markers+text',
+                    # 简化显示名称：如果是 Multicolor36-fine-LowPrice，只显示前两段
+                    text=sku_stats['sku_spec'].apply(lambda x: "-".join(x.split('-')[:2]) if '-' in str(x) else x),
+                    textposition="top center",
+                    marker=dict(
+                        size=sku_stats['neg_rate'],
+                        sizemode='area',
+                        # 气泡大小逻辑：差评率越高，气泡越大（代表风险越高）
+                        sizeref=2.*max(sku_stats['neg_rate'])/(50.**2) if max(sku_stats['neg_rate']) > 0 else 1,
+                        sizemin=10,
+                        color=sku_stats['avg_rating'],
+                        colorscale='RdYlGn', # 越绿分数越高
+                        showscale=True,
+                        colorbar=dict(title="平均分")
+                    )
+                ))
+                
+                fig_matrix.update_layout(
+                    title="SKU 竞争力分析 (气泡大=投诉风险高, 越靠右上越强)",
+                    xaxis_title="平均评分 (满意度)",
+                    yaxis_title="声量 (评论总句数)",
+                    height=500,
+                    margin=dict(l=20, r=20, t=40, b=20)
+                )
+                st.plotly_chart(fig_matrix, use_container_width=True)
+            else:
+                st.info("暂无 SKU 规格映射数据")
+
+        # --- c4: 人群 x 价格带 “错位”分析 (PMF) ---
         with c4:
-            # 4. 人群与产品的“错位”分析 (Product-Market Fit)
-            # 分析不同人群的平均评分，看哪个人群最“挑剔”
-            pmf_df = sub_df[sub_df['feat_用户身份'] != "未提及"].groupby('feat_用户身份')['Rating'].mean().reset_index()
-            fig_pmf = go.Figure(go.Bar(
-                x=pmf_df['feat_用户身份'], y=pmf_df['Rating'],
-                marker_color='#9b59b6'
-            ))
-            fig_pmf.add_hline(y=sub_df['Rating'].mean(), line_dash="dash", annotation_text="平均线")
-            fig_pmf.update_layout(title="不同人群的 PMF 满意度偏离分析", yaxis_range=[0,5], height=500)
-            st.plotly_chart(fig_pmf, use_container_width=True)
+            st.markdown("#### 🔬 人群 x 价格带 满意度偏离 (PMF)")
+            
+            # 这里的目的是看：专业人群是否在低价产品里留下了高分（真香定律）
+            role_col = 'feat_用户身份' if 'feat_用户身份' in sub_df.columns else 'feat_User_Role'
+            
+            # 过滤掉未提及人群的数据
+            pmf_base = sub_df[sub_df[role_col] != "未提及"].copy()
+            
+            if not pmf_base.empty:
+                # 从 sku_spec 提取价格标签 (假设格式最后一段是 LowPrice/HighPrice)
+                pmf_base['price_segment'] = pmf_base['sku_spec'].apply(
+                    lambda x: x.split('-')[-1] if '-' in str(x) else 'Other'
+                )
+                
+                # 创建交叉透视表：不同身份在不同价格带的平均星级
+                pmf_pivot = pmf_base.pivot_table(
+                    index=role_col, 
+                    columns='price_segment', 
+                    values='Rating', 
+                    aggfunc='mean'
+                ).fillna(0)
+                
+                fig_pmf = go.Figure()
+                # 为每个价格带（LowPrice, HighPrice 等）画一组柱状图
+                for segment in pmf_pivot.columns:
+                    fig_pmf.add_trace(go.Bar(
+                        name=segment, 
+                        x=pmf_pivot.index, 
+                        y=pmf_pivot[segment],
+                        text=pmf_pivot[segment].apply(lambda x: f"{x:.1f}" if x > 0 else ""),
+                        textposition='outside'
+                    ))
+                
+                # 添加一条全场平均星级水平线作为参照
+                fig_pmf.add_hline(y=sub_df['Rating'].mean(), line_dash="dash", 
+                                  line_color="gray", annotation_text="全场均分")
+                
+                fig_pmf.update_layout(
+                    title="不同人群对不同规格的评价 (寻找错位好评)",
+                    barmode='group',
+                    yaxis_title="平均星级评分",
+                    yaxis_range=[0, 5.5],
+                    height=500,
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                )
+                st.plotly_chart(fig_pmf, use_container_width=True)
+            else:
+                st.info("标签样本量不足，无法进行 PMF 错位分析")
 
         # 5. 动机与机会指数关联分析
         st.write("")
