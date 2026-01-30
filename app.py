@@ -834,9 +834,9 @@ if not df.empty:
         st.markdown("#### 💡 购买动机与改进优先序 (Motivation & Opportunity)")
         
         # 这里的逻辑：分析不同动机下的情感表现
-        motive_df = sub_df[sub_df['feat_购买动机'] != "未提及"]
+        motive_df = sub_df[sub_df['feat_Motivation'] != "未提及"]
         if not motive_df.empty:
-            motive_stats = motive_df.groupby('feat_购买动机').agg(
+            motive_stats = motive_df.groupby('feat_Motivation').agg(
                 count=('s_text', 'count'),
                 score=('Rating', 'mean')
             ).reset_index()
@@ -847,7 +847,7 @@ if not df.empty:
             col_m1, col_m2 = st.columns([3, 1])
             with col_m1:
                 fig_motive = go.Figure(go.Bar(
-                    y=motive_stats['feat_购买动机'], x=motive_stats['opp_idx'],
+                    y=motive_stats['feat_Motivation'], x=motive_stats['opp_idx'],
                     orientation='h', marker_color='#e67e22',
                     text=motive_stats['opp_idx'], textposition='outside'
                 ))
@@ -857,7 +857,7 @@ if not df.empty:
                 st.write("")
                 st.write("")
                 top_motive = motive_stats.sort_values('opp_idx', ascending=False).iloc[0]
-                st.error(f"**核心机会点：** \n\n 针对 **{top_motive['feat_购买动机']}** 动机进入的用户，目前满意度仅为 **{round(top_motive['score'],1)}**，建议作为下代产品核心卖点优化。")
+                st.error(f"**核心机会点：** \n\n 针对 **{top_motive['feat_Motivation']}** 动机进入的用户，目前满意度仅为 **{round(top_motive['score'],1)}**，建议作为下代产品核心卖点优化。")
 
         # --- 优化后的中间图表部分：柱状图 + 满意度折线 ---
 
