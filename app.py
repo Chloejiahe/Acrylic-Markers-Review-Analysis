@@ -911,15 +911,29 @@ if not df.empty:
                 values=persona_df['count'], 
                 hole=.45,
                 marker=dict(colors=['#636EFA', '#EF553B', '#00CC96', '#AB63FA', '#FFA15A']),
-                textinfo='percent+label'
+                # 为了防止文字在图中太乱，这里只留百分比，文字看右侧图例
+                textinfo='percent' 
             )])
             
             fig_pie.update_layout(
-                title=f"核心访客：{persona_dim}分布",
-                height=600,
+                title=dict(
+                    text=f"核心访客：{persona_dim}分布",
+                    x=0.5, # 标题居中
+                    xanchor='center'
+                ),
+                height=450,
                 showlegend=True,
-                legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5),
-                margin=dict(t=40, b=80, l=20, r=20)
+                # 优化图例：放置在右侧垂直排列，避免遮挡
+                legend=dict(
+                    orientation="v",
+                    yanchor="middle",
+                    y=0.5,
+                    xanchor="left",
+                    x=1.05,
+                    font=dict(size=12)
+                ),
+                # 调整边距：给右侧图例预留 150px 空间，给标题预留空间
+                margin=dict(t=80, b=40, l=40, r=180)
             )
             st.plotly_chart(fig_pie, use_container_width=True)
             
