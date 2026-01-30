@@ -556,77 +556,67 @@ def load_raw_data():
     return pd.concat(combined, ignore_index=True) if combined else pd.DataFrame()
 
 # --- 4. 核心分析逻辑 (优化版：引入评分加权与深度透视) ---
+def extract_advanced_features(df):
+    """为 DataFrame 注入人群、场景、动机标签"""
+    for dim_name, sub_dict in CLASSIFICATION_RULES.items():
+        def get_tag(text):
+            for tag, keywords in sub_dict.items():
+                if any(k in str(text).lower() for k in keywords):
+                    return tag
+            return "未提及"
+        
+        # 将维度名称简化为列名
+        col_name = "feat_" + dim_name.split('(')[0].strip()
+        df[col_name] = df['s_text'].apply(get_tag)
+    return df
+
 def analyze_sentiments(df_sub):
     results = []
-    
-    # 提前计算所有句子的总数
     total_reviews_count = len(df_sub)
     
     for category, sub_dict in FEATURE_DIC.items():
         pos_score, neg_score = 0.0, 0.0
-        hit_details = []
-        matched_ratings = []
-        
-        # 记录该维度下所有命中的样本量，用于计算置信度
+        hit_details, matched_ratings = [], []
         dimension_vocal_count = 0 
 
         for tag, keywords in sub_dict.items():
-            if not keywords: continue
-            
-            # 优化2：正则性能加速
             pattern = '|'.join([re.escape(k) for k in keywords])
-            
-            # 在已拆分的句子中匹配
             mask = df_sub['s_text'].str.contains(pattern, na=False)
             matched_df = df_sub[mask]
             
             if not matched_df.empty:
-                # 语义过滤：
-                # 如果是寻找痛点（负面标签），要求情感极性 < 0 或 Rating <= 3
-                # 如果是寻找亮点（正面标签），要求情感极性 > 0 或 Rating >= 4
-                if '负面' in tag or '不满' in tag:
-                    # 排除掉虽然含关键词但情感是正向的句子（如 "No leaks"）
+                if '负面' in tag:
                     valid_match = matched_df[(matched_df['s_pol'] < 0.1) | (matched_df['Rating'] <= 3)]
                     weight = 1.5 if valid_match['Rating'].mean() <= 2.1 else 1.0
                     neg_score += (len(valid_match) * weight)
                     count = len(valid_match)
-                elif '正面' in tag or '喜爱' in tag:
+                elif '正面' in tag:
                     valid_match = matched_df[(matched_df['s_pol'] > -0.1) | (matched_df['Rating'] >= 4)]
                     pos_score += len(valid_match)
                     count = len(valid_match)
-                else:
-                    count = len(matched_df)
+                else: count = 0
 
                 if count > 0:
                     dimension_vocal_count += count
                     matched_ratings.extend(valid_match['Rating'].tolist())
-                    if '负面' in tag or '不满' in tag:
-                        avg_r = valid_match['Rating'].mean()
-                        hit_details.append(f"{tag.split('-')[-1]}({count}次/{round(avg_r,1)}⭐)")
+                    if '负面' in tag:
+                        hit_details.append(f"{tag.split('-')[-1]}({count}次)")
 
-        # 优化3：机会指数鲁棒性优化
         dim_rating = np.mean(matched_ratings) if matched_ratings else 0
         total_vocal = pos_score + neg_score
         sentiment_score = (pos_score / total_vocal * 100) if total_vocal > 0 else 0
         
-        # 引入置信度系数：样本量的对数缩放
-        # 避免只有 1-2 条评论时产生极高的机会指数
-        confidence = np.log1p(dimension_vocal_count) / np.log1p(total_reviews_count / 5) 
-        confidence = min(max(confidence, 0.5), 1.2) # 限制在 0.5-1.2 之间
+        # 置信度缩放
+        confidence = np.log1p(dimension_vocal_count) / np.log1p(max(total_reviews_count/5, 1)) 
+        confidence = min(max(confidence, 0.5), 1.2)
         
-        raw_opp_index = neg_score * (100 - sentiment_score) * (5.1 - dim_rating) / 100
-        opp_index = round(raw_opp_index * confidence, 2)
+        opp_index = round((neg_score * (100 - sentiment_score) * (5.1 - dim_rating) / 100) * confidence, 2)
 
         results.append({
-            "维度": category,
-            "亮点": int(pos_score),
-            "痛点": int(neg_score),
-            "满意度": round(sentiment_score, 1),
-            "维度评分": round(dim_rating, 2),
-            "机会指数": opp_index,
-            "痛点分布": ", ".join(hit_details) if hit_details else "无"
+            "维度": category, "亮点": int(pos_score), "痛点": int(neg_score),
+            "满意度": round(sentiment_score, 1), "维度评分": round(dim_rating, 2),
+            "机会指数": opp_index, "痛点分布": ", ".join(hit_details) if hit_details else "无"
         })
-        
     return pd.DataFrame(results)
 
 # --- 5. Streamlit 页面布局 ---
@@ -704,6 +694,109 @@ if not df.empty:
                 height=400
             )
             st.plotly_chart(fig_radar, use_container_width=True, key=f"radar_{sub_name}")
+        
+        # --- 数据预处理 ---
+        sub_df = extract_advanced_features(sub_df)
+
+        st.markdown("### 🎯 深度市场深度解析 (Advanced Market Insight)")
+        
+        c1, c2 = st.columns(2)
+
+        with c1:
+            # 1. 人群饼图
+            role_df = sub_df[sub_df['feat_用户身份'] != "未提及"]['feat_用户身份'].value_counts().reset_index()
+            fig_pie = go.Figure(data=[go.Pie(labels=role_df['feat_用户身份'], values=role_df['count'], hole=.4)])
+            fig_pie.update_layout(title="用户画像分布 (Who is buying?)", height=400)
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+        with c2:
+            # 2. 场景热力图 (人群 vs 场景)
+            # 剔除未提及数据
+            heat_data = sub_df[(sub_df['feat_用户身份'] != "未提及") & (sub_df['feat_使用场景'] != "未提及")]
+            if not heat_data.empty:
+                ct = pd.crosstab(heat_data['feat_用户身份'], heat_data['feat_使用场景'])
+                fig_heat = go.Figure(data=go.Heatmap(
+                    z=ct.values, x=ct.columns, y=ct.index,
+                    colorscale='GnBu', texttemplate="%{z}", hoverinfo='z'
+                ))
+                fig_heat.update_layout(title="用户-场景关联热力图", height=400)
+                st.plotly_chart(fig_heat, use_container_width=True)
+            else:
+                st.info("样本量不足以生成热力图")
+
+        st.markdown("---")
+        c3, c4 = st.columns(2)
+
+        with c3:
+            # 3. SKU 规格竞争力矩阵 (Spec Matrix)
+            # 我们将维度作为气泡，X轴为满意度，Y轴为提及频率，大小为机会指数
+            fig_matrix = go.Figure()
+            fig_matrix.add_trace(go.Scatter(
+                x=analysis_res['满意度'],
+                y=analysis_res['亮点'] + analysis_res['痛点'],
+                mode='markers+text',
+                text=analysis_res['维度'],
+                textposition="top center",
+                marker=dict(
+                    size=analysis_res['机会指数'],
+                    sizemode='area',
+                    sizeref=2.*max(analysis_res['机会指数'])/(40.**2),
+                    sizemin=4,
+                    color=analysis_res['维度评分'],
+                    colorscale='RdYlGn',
+                    showscale=True,
+                    colorbar=dict(title="维度评分")
+                )
+            ))
+            fig_matrix.update_layout(
+                title="规格竞争力矩阵 (气泡大小=机会指数)",
+                xaxis_title="满意度 (%)",
+                yaxis_title="声量 (提及总数)",
+                height=500
+            )
+            st.plotly_chart(fig_matrix, use_container_width=True)
+
+        with c4:
+            # 4. 人群与产品的“错位”分析 (Product-Market Fit)
+            # 分析不同人群的平均评分，看哪个人群最“挑剔”
+            pmf_df = sub_df[sub_df['feat_用户身份'] != "未提及"].groupby('feat_用户身份')['Rating'].mean().reset_index()
+            fig_pmf = go.Figure(go.Bar(
+                x=pmf_df['feat_用户身份'], y=pmf_df['Rating'],
+                marker_color='#9b59b6'
+            ))
+            fig_pmf.add_hline(y=sub_df['Rating'].mean(), line_dash="dash", annotation_text="平均线")
+            fig_pmf.update_layout(title="不同人群的 PMF 满意度偏离分析", yaxis_range=[0,5], height=500)
+            st.plotly_chart(fig_pmf, use_container_width=True)
+
+        # 5. 动机与机会指数关联分析
+        st.write("")
+        st.markdown("#### 💡 购买动机与改进优先序 (Motivation & Opportunity)")
+        
+        # 这里的逻辑：分析不同动机下的情感表现
+        motive_df = sub_df[sub_df['feat_购买动机'] != "未提及"]
+        if not motive_df.empty:
+            motive_stats = motive_df.groupby('feat_购买动机').agg(
+                count=('s_text', 'count'),
+                score=('Rating', 'mean')
+            ).reset_index()
+            
+            # 计算动机机会指数：声量 / 评分 (评分越低、声量越高，指数越高)
+            motive_stats['opp_idx'] = (motive_stats['count'] / motive_stats['score']).round(2)
+            
+            col_m1, col_m2 = st.columns([3, 1])
+            with col_m1:
+                fig_motive = go.Figure(go.Bar(
+                    y=motive_stats['feat_购买动机'], x=motive_stats['opp_idx'],
+                    orientation='h', marker_color='#e67e22',
+                    text=motive_stats['opp_idx'], textposition='outside'
+                ))
+                fig_motive.update_layout(title="基于购买动机的机会指数 (数值越高代表需求未被满足)", height=300)
+                st.plotly_chart(fig_motive, use_container_width=True)
+            with col_m2:
+                st.write("")
+                st.write("")
+                top_motive = motive_stats.sort_values('opp_idx', ascending=False).iloc[0]
+                st.error(f"**核心机会点：** \n\n 针对 **{top_motive['feat_购买动机']}** 动机进入的用户，目前满意度仅为 **{round(top_motive['score'],1)}**，建议作为下代产品核心卖点优化。")
 
         # --- 优化后的中间图表部分：柱状图 + 满意度折线 ---
 
