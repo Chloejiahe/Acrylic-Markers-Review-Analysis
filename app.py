@@ -479,7 +479,14 @@ CLASSIFICATION_RULES = {
             '文化体验与活动 (Cultural Activities)': ['workshop', 'art event', 'cultural festival', 'live drawing', 'art therapy session', 'community art'],
             '心理疗愈 (Therapeutic Use)': ['for relaxing', 'for relaxation', 'stress relief', 'art therapy', 'therapeutic', 'calming', 'for mindfulness','emotional outlet', 'doodling to relax', 'zen', 'to unwind']
         },
-             
+        "Motivation": {
+            '专业需求-色彩表现': ['high quality pigment', 'high pigment load', 'richly pigmented', 'pure pigment', 'vibrant colors', 'rich colors', 'deep saturation', 'consistent saturation', 'intense colors','lightfast', 'excellent lightfastness', 'lightfastness rating', 'archival quality', 'archival ink', 'museum quality','smooth blending', 'blends seamlessly', 'layering without getting muddy', 'excellent blendability', 'good for glazing', 'lifts cleanly', 'non-staining', 'good staining properties','true to color', 'color accuracy', 'good opacity', 'opaque coverage', 'good transparency'],
+            '专业需求-性能耐用': ['pro grade', 'professional grade', 'reliable for work', 'consistent flow', 'consistent performance', 'durable tip', 'long lasting', 'for professional work', 'serious tool', 'heavy duty', 'withstand pressure', 'workhorse', 'built to last', 'daily driver', 'holds up to heavy use',  'no skipping', 'dependable performance', 'withstands abuse', 'for demanding work'],
+            '基础功能需求': ['for basic use', 'for everyday use', 'for daily use', 'for school', 'for taking notes', 'gets the job done', 'does the job', 'all i need', 'nothing fancy', 'just the basics', 'no frills', 'simple and effective', 'standard use', 'for general use'],
+            '艺术兴趣驱动': ['for my hobby', 'passion for art', 'spark creativity', 'express myself', 'for fun', 'artistic exploration','wanted to try', 'get back into art','for hobby'],
+            '品牌信任': [ 'trusted brand', 'good reputation', 'well-known brand', 'always reliable', 'go-to brand', 'love this brand','stick with this brand', 'brand loyalty',],
+            '性价比驱动': [ 'good value', 'great price', 'affordable', 'on a budget', 'good deal', 'cheap but good', 'cost effective', 'cheaper alternative'],
+            '创新功能吸引': ['innovative feature', 'new feature',  'unique feature', 'special feature','new technology'],   
             '外观设计吸引': ['love the design', 'beautiful aesthetic', 'looks good', 'pretty colors', 'minimalist design', 'the look of it', 'elegant design'],
             '包装与开箱体验吸引': ['beautiful packaging', 'great unboxing experience', 'giftable', 'nice box', 'good presentation'],
             '社交驱动-口碑推荐': ['recommendation', 'recommended by', 'my friend recommended', 'my teacher recommended', 'word of mouth', 'told me to buy','saw good reviews'],
