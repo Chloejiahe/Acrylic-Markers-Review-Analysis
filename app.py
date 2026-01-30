@@ -1036,25 +1036,25 @@ if not df.empty:
                 # 辅助及格线
                 fig.add_hline(y=3.5, line_dash="dash", line_color="red", opacity=0.3)
                 fig.add_vline(x=3.5, line_dash="dash", line_color="red", opacity=0.3)
-                st.plotly_chart(fig, use_container_width=True, key=f"bubble_{title_label}")
+                st.plotly_chart(fig, use_container_width=True, key=f"chart_{suffix}_{title_label}")
 
             # 2. 创建交互式 Tabs
-            tab_list = st.tabs(["📊 总体全量分析"] + [f"👤 人群：{r}" for r in top_roles])
-            
+            tab_list = st.tabs(["📊 总体全量分析"] + [f"👤 人群：{r}" for r in top_roles])     
             with tab_list[0]:
                 st.caption(f"矩阵图例：X={dim_x} | Y={dim_y} | 气泡大小={dim_bubble}")
-                draw_sku_bubble_chart(sub_df, "全量数据")
-                
+                # 传入唯一后缀 "total"
+                draw_sku_bubble_chart(sub_df, "全量数据", "total")  
             for i, role in enumerate(top_roles):
                 with tab_list[i+1]:
                     role_sub = sub_df[sub_df['feat_User_Role'] == role]
                     st.caption(f"针对 **{role}** 人群的维度评分矩阵")
-                    draw_sku_bubble_chart(role_sub, role)
+                    # 传入唯一后缀，使用索引 i 确保循环内不重复
+                    draw_sku_bubble_chart(role_sub, role, f"role_{i}")
         else:
             st.info("💡 核心痛点不足 3 个，无法构建三维气泡矩阵。")
             
         
-# --- 板块 5: 动机与核心痛点深度关联分析 ---
+        # --- 板块 5: 动机与核心痛点深度关联分析 ---
         st.markdown("#### 💡 购买动机与改进优先序 (Motivation & Opportunity)")
 
         motive_df = sub_df[sub_df['feat_Motivation'] != "未提及"].copy()
