@@ -904,59 +904,85 @@ if not df.empty:
         st.markdown("---")
         c3, c4 = st.columns(2)
 
-        # --- c3: SKU 规格竞争力矩阵 ---
+        # --- c3: 基于 Top 3 痛点集成的 SKU 竞争力矩阵 ---
         with c3:
-            st.markdown("#### 🚀 SKU 规格表现矩阵 (Spec Performance)")
+            st.markdown("#### 🚀 核心痛点集成表现矩阵 (Top 3 Pain-points Integrated)")
             
-            # --- 强制刷新缓存调试 (临时加入) ---
-            # st.write(f"当前子集行数: {len(sub_df)}") 
-            # st.write("前5个ASIN:", sub_df['Asin'].head().tolist() if 'Asin' in sub_df.columns else "无ASIN列")
-            # st.write("规格分布:", sub_df['sku_spec'].value_counts())
-            
-            # 过滤掉 Unknown，只看映射成功的，方便排查
-            display_stats = sub_df.copy()
-            
-            # 按映射后的 sku_spec 分组
-            sku_stats = display_stats.groupby('sku_spec').agg(
-                avg_rating=('Rating', 'mean'),
-                vocal_volume=('s_text', 'count'),
-                neg_rate=('Rating', lambda x: (x <= 3).sum() / len(x) * 100 if len(x) > 0 else 0)
-            ).reset_index()
+            # 1. 自动提取前三个核心痛点维度
+            integrated_dims = pain_df['维度'].tolist()[:3] if not pain_df.empty else ["性价比", "流畅性", "笔头表现"]
+            st.caption(f"当前集成维度：{', '.join(integrated_dims)}")
 
-            # 如果全是 Unknown，为了让图能看，先不要过滤，但我们要查原因
-            if not sku_stats.empty:
-                # 修复 size 逻辑：如果只有一行数据且 neg_rate 为 0，sizeref 会导致报错
-                max_neg = max(sku_stats['neg_rate'])
-                calc_sizeref = 2. * max_neg / (50.**2) if max_neg > 0 else 1
+            # 2. 局部函数：计算 SKU 在特定痛点维度下的表现
+            def get_integrated_pain_stats(df, dimensions):
+                # 汇总所有痛点维度的关键词
+                all_keywords = []
+                for dim in dimensions:
+                    if dim in FEATURE_DIC:
+                        # 重点抓取负面/痛点相关的关键词
+                        for tag, keys in FEATURE_DIC[dim].items():
+                            if '负面' in tag or '不满' in tag or '痛点' in tag:
+                                all_keywords.extend(keys)
                 
-                fig_matrix = go.Figure()
-                fig_matrix.add_trace(go.Scatter(
-                    x=sku_stats['avg_rating'],
-                    y=sku_stats['vocal_volume'],
+                if not all_keywords:
+                    return pd.DataFrame()
+                
+                pattern = '|'.join([re.escape(k) for k in set(all_keywords) if k.strip()])
+                # 筛选涉及核心痛点的评论行
+                target_mask = df['s_text'].str.contains(pattern, na=False, flags=re.IGNORECASE)
+                dim_df = df[target_mask].copy()
+                
+                if dim_df.empty:
+                    return pd.DataFrame()
+
+                # 按 SKU 分组统计这些痛点维度的“受灾”情况
+                stats = dim_df.groupby('sku_spec').agg(
+                    pain_score=('Rating', 'mean'),       # 在痛点评价中的平均分（越低说明被骂得越狠）
+                    pain_vocal=('s_text', 'count'),      # 痛点被提及的总声量（越高说明问题越普遍）
+                    pain_count=('Rating', lambda x: (x <= 3).sum()) # 差评绝对数量（气泡大小）
+                ).reset_index()
+                return stats
+
+            sku_pain_stats = get_integrated_pain_stats(sub_df, integrated_dims)
+
+            if not sku_pain_stats.empty:
+                # 3. 动态计算气泡缩放比例
+                max_impact = sku_pain_stats['pain_count'].max()
+                calc_sizeref = 2. * max_impact / (60.**2) if max_impact > 0 else 1
+                
+                fig_integrated = go.Figure()
+                fig_integrated.add_trace(go.Scatter(
+                    x=sku_pain_stats['pain_score'],
+                    y=sku_pain_stats['pain_vocal'],
                     mode='markers+text',
-                    text=sku_stats['sku_spec'].apply(lambda x: "-".join(str(x).split('-')[:2]) if '-' in str(x) else x),
+                    text=sku_pain_stats['sku_spec'].apply(lambda x: str(x).split('-')[0]), # 简化显示名称
                     textposition="top center",
                     marker=dict(
-                        size=sku_stats['neg_rate'],
+                        size=sku_pain_stats['pain_count'],
                         sizemode='area',
                         sizeref=calc_sizeref,
                         sizemin=10,
-                        color=sku_stats['avg_rating'],
-                        colorscale='RdYlGn',
+                        color=sku_pain_stats['pain_score'],
+                        colorscale='RdYlGn', # 红(低分) -> 绿(高分)
                         showscale=True,
-                        colorbar=dict(title="平均分", thickness=15)
+                        colorbar=dict(title="痛点得分", thickness=15)
                     ),
-                    hovertemplate="<b>规格: %{text}</b><br>评分: %{x:.2f}<br>声量: %{y}<br>差评率: %{marker.size:.1f}%<extra></extra>"
+                    hovertemplate="<b>规格: %{text}</b><br>核心痛点评分: %{x:.2f}<br>讨论热度: %{y}<br>累计投诉: %{marker.size}次<extra></extra>"
                 ))
                 
-                fig_matrix.update_layout(
-                    xaxis=dict(title="平均评分", gridcolor='white'),
-                    yaxis=dict(title="声量 (评论句数)", gridcolor='white'),
+                # 增加十字均值基准线
+                fig_integrated.add_vline(x=sku_pain_stats['pain_score'].mean(), line_dash="dot", line_color="gray", opacity=0.5)
+                fig_integrated.add_hline(y=sku_pain_stats['pain_vocal'].mean(), line_dash="dot", line_color="gray", opacity=0.5)
+
+                fig_integrated.update_layout(
+                    xaxis=dict(title="痛点满意度 (越高越好)", range=[1, 5.5], gridcolor='white'),
+                    yaxis=dict(title="市场关注度 (涉及痛点的声量)", gridcolor='white'),
                     height=500,
                     margin=dict(l=20, r=20, t=40, b=20),
-                    plot_bgcolor='rgba(240,240,240,0.5)' # 增加背景色方便看清气泡
+                    plot_bgcolor='rgba(240,240,240,0.5)'
                 )
-                st.plotly_chart(fig_matrix, use_container_width=True)
+                st.plotly_chart(fig_integrated, use_container_width=True)
+            else:
+                st.info("💡 当前选中的核心痛点维度下暂无足够的 SKU 对比数据。")
 
         # --- c4: 人群 x 价格带 “错位”分析 (PMF) ---
         with c4:
