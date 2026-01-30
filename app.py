@@ -523,17 +523,25 @@ def load_raw_data():
     for filename, info in data_map.items():
         if os.path.exists(filename):
             df_temp = pd.read_excel(filename)
-            col_name = 'Content' if 'Content' in df_temp.columns else \
-                       ('Review Body' if 'Review Body' in df_temp.columns else df_temp.columns[0])
             
+            # --- 修复 1: 自动寻找列名增加容错性 ---
+            col_name = next((c for c in ['Content', 'Review Body', 'Body', 'content'] if c in df_temp.columns), df_temp.columns[0])
+            asin_col = next((c for c in ['ASIN', 'Parent ASIN', 'Product ID', 'asin', 'child_asin'] if c in df_temp.columns), None)
+            
+            # --- 修复 2: 映射逻辑（放在拆分前，效率更高且不易出错） ---
+            if asin_col:
+                # 关键：强制转字符串、去空格、转大写
+                df_temp['sku_spec'] = df_temp[asin_col].astype(str).str.strip().str.upper().map(USER_CATEGORY_MAPPING).fillna("Other-Unmapped")
+            else:
+                df_temp['sku_spec'] = "Unknown-Spec"
+
+            # --- 句子拆分与情感分析 ---
             df_temp = df_temp.dropna(subset=[col_name])
             
             def split_and_analyze(text):
-                # 预处理：转小写并拆句
                 sentences = sent_tokenize(str(text).lower())
                 results = []
                 for s in sentences:
-                    # TextBlob 极性分析
                     pol = TextBlob(s).sentiment.polarity
                     results.append({'text': s, 'polarity': pol})
                 return results
@@ -541,20 +549,14 @@ def load_raw_data():
             df_temp['sentences'] = df_temp[col_name].apply(split_and_analyze)
             df_exploded = df_temp.explode('sentences')
             
-            # 安全提取，防止空值报错
+            # 安全提取句子内容
             df_exploded['s_text'] = df_exploded['sentences'].apply(lambda x: x['text'] if isinstance(x, dict) else "")
             df_exploded['s_pol'] = df_exploded['sentences'].apply(lambda x: x['polarity'] if isinstance(x, dict) else 0)
             
             df_exploded['main_category'] = info[0]
             df_exploded['sub_type'] = info[1]
             
-            # 执行 ASIN 映射
-            asin_col = next((c for c in ['ASIN', 'Parent ASIN', 'Product ID'] if c in df_exploded.columns), None)
-            if asin_col:
-                df_exploded['sku_spec'] = df_exploded[asin_col].map(USER_CATEGORY_MAPPING).fillna("Other-Unmapped")
-            else:
-                df_exploded['sku_spec'] = "Unknown-Spec"
-                
+            # 此时 sku_spec 已经作为列被 explode 自动带下来了
             combined.append(df_exploded)
     
     return pd.concat(combined, ignore_index=True) if combined else pd.DataFrame()
