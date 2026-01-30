@@ -947,19 +947,86 @@ if not df.empty:
 
         st.markdown("---")
 
-        # --- 板块 2: 场景热力图 (独占一行) ---
-        st.markdown("#### 🖼️ 场景热力图 (User-Usage Correlation)")
-        heat_data = sub_df[(sub_df['feat_User_Role'] != "未提及") & (sub_df['feat_Usage'] != "未提及")]
-        if not heat_data.empty:
-            ct = pd.crosstab(heat_data['feat_User_Role'], heat_data['feat_Usage'])
-            fig_heat = go.Figure(data=go.Heatmap(
-                z=ct.values, x=ct.columns, y=ct.index,
-                colorscale='GnBu', texttemplate="%{z}", hoverinfo='z'
-            ))
-            fig_heat.update_layout(title="用户-场景关联热力图", height=400)
-            st.plotly_chart(fig_heat, use_container_width=True)
+       # --- 新版块: 用户-场景-动机 全景流动图 (User Journey Sankey) ---
+        st.markdown("#### 🌊 用户旅程全景流向 (User-Usage-Motivation Flow)")
+        st.info("💡 此图展示了 **用户身份** 如何流向具体的 **使用场景**，最终由什么 **动机** 驱动购买。线条越粗，代表人群规模越大。")
+
+        # 1. 数据准备：过滤掉无效节点
+        sankey_df = sub_df[
+            (sub_df['feat_User_Role'] != "未提及") & 
+            (sub_df['feat_Usage'] != "未提及") & 
+            (sub_df['feat_Motivation'] != "未提及")
+        ]
+
+        if len(sankey_df) > 5:  # 只有数据足够才画图
+            # 2. 节点映射 (Label -> Index)
+            # 定义层级：Level 0 = Role, Level 1 = Usage, Level 2 = Motivation
+            
+            # 获取各层级的 Top 5 (避免图表过乱)
+            top_roles = sankey_df['feat_User_Role'].value_counts().head(5).index.tolist()
+            top_usages = sankey_df['feat_Usage'].value_counts().head(5).index.tolist()
+            top_motivations = sankey_df['feat_Motivation'].value_counts().head(5).index.tolist()
+            
+            # 筛选数据
+            filtered_sk = sankey_df[
+                sankey_df['feat_User_Role'].isin(top_roles) & 
+                sankey_df['feat_Usage'].isin(top_usages) & 
+                sankey_df['feat_Motivation'].isin(top_motivations)
+            ]
+            
+            # 生成节点列表
+            all_nodes = top_roles + top_usages + top_motivations
+            node_map = {name: i for i, name in enumerate(all_nodes)}
+            
+            # 3. 构建 Link (Source -> Target)
+            sources = []
+            targets = []
+            values = []
+            link_colors = []
+            
+            # 第一阶段：Role -> Usage
+            step1 = filtered_sk.groupby(['feat_User_Role', 'feat_Usage']).size().reset_index(name='count')
+            for _, row in step1.iterrows():
+                sources.append(node_map[row['feat_User_Role']])
+                targets.append(node_map[row['feat_Usage']])
+                values.append(row['count'])
+                link_colors.append('rgba(31, 119, 180, 0.3)') # 浅蓝色流线
+                
+            # 第二阶段：Usage -> Motivation
+            step2 = filtered_sk.groupby(['feat_Usage', 'feat_Motivation']).size().reset_index(name='count')
+            for _, row in step2.iterrows():
+                sources.append(node_map[row['feat_Usage']])
+                targets.append(node_map[row['feat_Motivation']])
+                values.append(row['count'])
+                link_colors.append('rgba(255, 127, 14, 0.3)') # 浅橙色流线
+
+            # 4. 绘图
+            fig_sankey = go.Figure(data=[go.Sankey(
+                node=dict(
+                    pad=15,
+                    thickness=20,
+                    line=dict(color="black", width=0.5),
+                    label=all_nodes,
+                    color="blue" # 节点默认颜色，也可以自定义列表
+                ),
+                link=dict(
+                    source=sources,
+                    target=targets,
+                    value=values,
+                    color=link_colors
+                )
+            )])
+            
+            fig_sankey.update_layout(title_text="用户需求流动路径图", font_size=12, height=500)
+            st.plotly_chart(fig_sankey, use_container_width=True)
+            
+            # 简短解读
+            top_path = step2.sort_values('count', ascending=False).iloc[0]
+            st.caption(f"🚀 **最大需求路径：** 大量用户在 **{top_path['feat_Usage']}** 场景下，主要被 **{top_path['feat_Motivation']}** 驱动。")
+            
         else:
-            st.info("样本量不足以生成热力图")
+            st.warning("数据量不足以生成流向图")
+        
         st.markdown("---")
 
         # --- 板块 3: 核心痛点维度评分矩阵 (人群动态维度优化版) ---
