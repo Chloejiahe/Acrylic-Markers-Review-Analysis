@@ -777,6 +777,17 @@ if not df.empty:
         # 6. 底部数据下钻：找出所有“及格线以下”的隐患
         st.markdown("🔍 **竞品弱点靶向追踪 (Opportunity Analysis)**")
         
+        # --- 新增：机会指数计算说明说明 ---
+        with st.expander("📊 如何解读机会指数？"):
+            st.write("机会指数是我们衡量“竞品失分严重程度”与“市场需求规模”的综合指标：")
+            st.latex(r"Opportunity Index = \text{Pain Frequency} \times (5 - \text{Average Rating})")
+            st.caption("""
+            - **痛点提及频次 (Pain Frequency)**：代表该问题的普遍性，打低分的人越多，指数越高。
+            - **5 - 平均评分**：代表该问题的严重性。
+            - **判定标准**：指数越高，代表该维度的“缺口”越大。
+            """)
+        # ----------------------------
+        
         # 使用我们计算的“机会指数”进行排序，选出前 3 个最值得攻击的弱点
         pain_df = analysis_res.sort_values("机会指数", ascending=False).head(3)
 
@@ -947,100 +958,6 @@ if not df.empty:
 
         st.markdown("---")
 
-# --- 优化版块: 用户-场景-动机 全景流动图 (User Journey Sankey) ---
-        st.markdown("#### 🌊 用户旅程全景流向 (User-Usage-Motivation Flow)")
-        st.info("💡 此图展示了 **用户身份** 如何流向具体的 **使用场景**，最终由什么 **动机** 驱动购买。")
-
-        # 1. 数据准备
-        sankey_df = sub_df[
-            (sub_df['feat_User_Role'] != "未提及") & 
-            (sub_df['feat_Usage'] != "未提及") & 
-            (sub_df['feat_Motivation'] != "未提及")
-        ]
-
-        if len(sankey_df) > 5:
-            # 2. 节点与色彩定义 (使用更专业的 D3 配色)
-            top_roles = sankey_df['feat_User_Role'].value_counts().head(5).index.tolist()
-            top_usages = sankey_df['feat_Usage'].value_counts().head(5).index.tolist()
-            top_motivations = sankey_df['feat_Motivation'].value_counts().head(5).index.tolist()
-            
-            filtered_sk = sankey_df[
-                sankey_df['feat_User_Role'].isin(top_roles) & 
-                sankey_df['feat_Usage'].isin(top_usages) & 
-                sankey_df['feat_Motivation'].isin(top_motivations)
-            ]
-            
-            all_nodes = top_roles + top_usages + top_motivations
-            node_map = {name: i for i, name in enumerate(all_nodes)}
-            
-            # 为不同层级设置不同的色系
-            # Role: 蓝色系, Usage: 绿色系, Motivation: 橙黄色系
-            node_colors = (
-                ['#3182bd'] * len(top_roles) +    # 沉稳蓝
-                ['#31a354'] * len(top_usages) +   # 活力绿
-                ['#e6550d'] * len(top_motivations) # 预警橙
-            )
-            
-            # 3. 构建 Link
-            sources, targets, values, link_colors = [], [], [], []
-            
-            # Role -> Usage (色彩采用源节点的半透明色)
-            step1 = filtered_sk.groupby(['feat_User_Role', 'feat_Usage']).size().reset_index(name='count')
-            for _, row in step1.iterrows():
-                sources.append(node_map[row['feat_User_Role']])
-                targets.append(node_map[row['feat_Usage']])
-                values.append(row['count'])
-                link_colors.append('rgba(49, 130, 189, 0.25)') # 半透明蓝
-                
-            # Usage -> Motivation
-            step2 = filtered_sk.groupby(['feat_Usage', 'feat_Motivation']).size().reset_index(name='count')
-            for _, row in step2.iterrows():
-                sources.append(node_map[row['feat_Usage']])
-                targets.append(node_map[row['feat_Motivation']])
-                values.append(row['count'])
-                link_colors.append('rgba(49, 163, 84, 0.25)') # 半透明绿
-
-            # 4. 绘图与布局优化 (增强文字版)
-            fig_sankey = go.Figure(data=[go.Sankey(
-                node=dict(
-                    pad=30,           
-                    thickness=15,      
-                    line=dict(color="rgba(0,0,0,0.2)", width=0.5), # 边框变淡
-                    # --- 文字优化点 ---
-                    label=[f"<span style='color:black; font-weight:bold;'>{n}</span>" for n in all_nodes], 
-                    color=node_colors,
-                    # -----------------
-                    hoverlabel=dict(bgcolor="#2c3e50", font_size=14)
-                ),
-                link=dict(
-                    source=sources,
-                    target=targets,
-                    value=values,
-                    color=link_colors,
-                    hovertemplate='%{source.label} → %{target.label}<br>样本量: %{value}<extra></extra>'
-                )
-            )])
-            
-            fig_sankey.update_layout(
-                title=dict(text="用户需求路径映射图", x=0.05, font=dict(size=20, color='black')),
-                font=dict(
-                    family="Arial, sans-serif", # 使用无衬线字体更清晰
-                    size=14,                    # 增大字号
-                    color="black"               # 全局强制黑色
-                ),
-                height=600,
-                margin=dict(t=80, b=40, l=40, r=40), # 增加两侧边距防止文字被切断
-                paper_bgcolor='white',            # 建议底色设为纯白而非透明
-                plot_bgcolor='white'
-            )
-            st.plotly_chart(fig_sankey, use_container_width=True)
-            
-            # 5. 增强型解读
-            top_path = step2.sort_values('count', ascending=False).iloc[0]
-            st.success(f"🎯 **高价值路径识别：** 核心场景 **{top_path['feat_Usage']}** 的用户主要受 **{top_path['feat_Motivation']}** 驱动。建议针对此链路优化营销话术。")
-            
-        else:
-            st.warning("🔍 数据样本量不足，无法生成流向图。")
 
         # --- 板块 3: 核心痛点维度评分矩阵 (人群动态维度优化版) ---
         st.markdown("#### 🚀 核心痛点维度评分矩阵 (Dynamic Persona-Pain Matrix)")
@@ -1156,86 +1073,6 @@ if not df.empty:
                     draw_sku_bubble_chart(role_sub, role, f"role_{i}", role_specific_dims)
             
         
-        # --- 板块 5: 动机与核心痛点深度关联分析 ---
-        st.markdown("#### 💡 购买动机与改进优先序 (Motivation & Opportunity)")
-
-        motive_df = sub_df[sub_df['feat_Motivation'] != "未提及"].copy()
-        
-        # 引用之前分析出的 Top 3 痛点维度，确保全篇逻辑闭环
-        if not motive_df.empty and not pain_df.empty:
-            top_dims = pain_df['维度'].tolist()[:3]
-            
-            # 定义一个函数：计算特定动机下，各维度的表现
-            def get_motive_dim_analysis(df, dims):
-                motive_results = []
-                for motive in df['feat_Motivation'].unique():
-                    m_sub = df[df['feat_Motivation'] == motive]
-                    m_count = len(m_sub)
-                    m_avg_rating = m_sub['Rating'].mean()
-                    
-                    # 在该动机群体中，计算最差的一个维度
-                    dim_scores = {}
-                    for d in dims:
-                        # 简单的评分逻辑映射（可重用之前的匹配逻辑）
-                        keywords = []
-                        for keys in FEATURE_DIC.get(d, {}).values(): keywords.extend(keys)
-                        pat = '|'.join([re.escape(k) for k in keywords if k.strip()])
-                        matched = m_sub[m_sub['s_text'].str.contains(pat, na=False, flags=re.IGNORECASE)]
-                        if not matched.empty:
-                            dim_scores[d] = matched['Rating'].mean()
-                    
-                    # 找出得分最低的维度作为“首要病因”
-                    worst_dim = min(dim_scores, key=dim_scores.get) if dim_scores else "综合体验"
-                    worst_score = dim_scores.get(worst_dim, m_avg_rating)
-                    
-                    # 重新定义机会指数：动机声量 * (5 - 维度评分) 
-                    # 这样分值越低，指数越高，逻辑更符合直觉
-                    opp_idx = round(m_count * (5 - worst_score), 2)
-                    
-                    motive_results.append({
-                        '动机': motive,
-                        '样本量': m_count,
-                        '总体评分': round(m_avg_rating, 2),
-                        '首要痛点维度': worst_dim,
-                        '痛点评分': round(worst_score, 2),
-                        '机会指数': opp_idx
-                    })
-                return pd.DataFrame(motive_results)
-
-            m_stats = get_motive_dim_analysis(motive_df, top_dims)
-            m_stats = m_stats.sort_values('机会指数', ascending=False)
-
-            # 绘制双轴图：动机声量 vs 痛点评分
-            fig_motive = go.Figure()
-            
-            # 柱状图：机会指数
-            fig_motive.add_trace(go.Bar(
-                x=m_stats['动机'], y=m_stats['机会指数'],
-                name='机会指数',
-                marker_color='#e67e22',
-                text=m_stats['首要痛点维度'], # 柱子上直接标出是哪个维度不行
-                textposition='auto'
-            ))
-
-            fig_motive.update_layout(
-                title="不同购买动机下的改进机会 (指数越高=需求缺口越大)",
-                xaxis_title="购买动机",
-                yaxis_title="机会指数 (声量 x 评分缺口)",
-                height=400,
-                margin=dict(t=50, b=50)
-            )
-            
-            st.plotly_chart(fig_motive, use_container_width=True)
-
-            # 底部诊断：提供具体的执行建议
-            top_m = m_stats.iloc[0]
-            st.warning(f"""
-                🚀 **执行策略建议：**
-                针对以 **{top_m['动机']}** 为动机的用户，最大的改进机会在于 **{top_m['首要痛点维度']}** (该维度分仅 {top_m['痛点评分']})。
-                建议在产品迭代或详情页描述中，重点优化并展示针对该动机的解决方案。
-            """)
-        else:
-            st.info("🔍 动机数据或维度分析不足，无法生成关联矩阵。")
 
 else:
     st.info("💡 请确保数据加载正确。")
