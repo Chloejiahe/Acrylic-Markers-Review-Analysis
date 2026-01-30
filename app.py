@@ -703,6 +703,167 @@ if not df.empty:
             )
             st.plotly_chart(fig_radar, use_container_width=True, key=f"radar_{sub_name}")
         
+        # --- 优化后的中间图表部分：柱状图 + 满意度折线 ---
+
+        # 1. 创建带双 Y 轴的图表
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+        # 2. 添加亮点柱状图
+        fig.add_trace(
+            go.Bar(name='亮点', x=analysis_res['维度'], y=analysis_res['亮点'], 
+                   marker_color='#2ecc71', text=analysis_res['亮点'], textposition='auto'),
+            secondary_y=False
+        )
+
+        # 3. 添加痛点柱状图
+        fig.add_trace(
+            go.Bar(name='痛点', x=analysis_res['维度'], y=analysis_res['痛点'], 
+                   marker_color='#e74c3c', text=analysis_res['痛点'], textposition='auto'),
+            secondary_y=False
+        )
+
+        # 4. 添加满意度折线图（显示具体分数）
+        fig.add_trace(
+            go.Scatter(
+                name='满意度 (%)', 
+                x=analysis_res['维度'], 
+                y=analysis_res['满意度'],
+                mode='lines+markers+text', # 线、点、文字同时显示
+                text=analysis_res['满意度'].apply(lambda x: f"{x}%"), # 格式化文字
+                textposition="top center", # 文字显示在点上方
+                line=dict(color='#3498db', width=3),
+                marker=dict(size=8)
+            ),
+            secondary_y=True # 使用右侧 Y 轴
+        )
+            
+        # 在 fig.add_trace(go.Scatter(...)) 之后添加
+        fig.add_trace(
+            go.Scatter(
+                name='维度评分 (1-5)', 
+                x=analysis_res['维度'], 
+                y=analysis_res['维度评分'],
+                mode='lines+markers',
+                line=dict(color='#f1c40f', width=2, dash='dot'),
+                marker=dict(symbol='star', size=10)
+            ),
+            secondary_y=True # 同样挂载在右轴，注意右轴范围建议设为 [0, 5] 或 [0, 100] 缩放
+        )
+        
+        # 修改右侧 Y 轴范围以兼容百分比和 5 分制（建议将评分乘以 20 映射到 100 分制）
+        fig.update_yaxes(title_text="满意度/评分映射 (%)", range=[0, 110], secondary_y=True)
+
+        # 5. 图表样式配置
+        fig.update_layout(
+            title=f"【{sub_name}】各维度情感倾向分布与满意度趋势",
+            barmode='group',
+            height=600,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+
+        # 设置左轴为提及次数，右轴为百分比
+        fig.update_yaxes(title_text="提及次数", secondary_y=False)
+        fig.update_yaxes(title_text="满意度分数 (%)", range=[0, 110], secondary_y=True)
+
+        st.plotly_chart(fig, use_container_width=True, key=f"chart_{sub_name}")
+
+        # 6. 底部数据下钻：找出所有“及格线以下”的隐患
+        st.markdown("🔍 **竞品弱点靶向追踪 (Opportunity Analysis)**")
+        
+        # 使用我们计算的“机会指数”进行排序，选出前 3 个最值得攻击的弱点
+        pain_df = analysis_res.sort_values("机会指数", ascending=False).head(3)
+
+        if not pain_df.empty:
+            cols = st.columns(3)
+            for idx, (_, row) in enumerate(pain_df.iterrows()):
+                with cols[idx]:
+                    # 颜色基于评分：评分越低越红
+                    color = "#c0392b" if row['维度评分'] < 3.5 else "#d35400"
+                    st.markdown(f"""
+                    <div style="padding:15px; border-radius:10px; border-left: 8px solid {color}; 
+                                 background-color: #fdfefe; border-top:1px solid #eee; border-right:1px solid #eee;
+                                 box-shadow: 2px 2px 8px rgba(0,0,0,0.05); min-height: 200px;">
+                        <div style="display:flex; justify-content:space-between;">
+                            <h4 style="margin:0;">{row['维度']}</h4>
+                            <span style="color:{color}; font-weight:bold;">得分: {row['维度评分']} ⭐</span>
+                        </div>
+                        <p style="color:gray; font-size:11px; margin-bottom:10px;">
+                           机会指数: {row['机会指数']} (数值越高越建议切入)
+                        </p>
+                        <p style="font-size:14px;"><b>核心投诉根因：</b><br/>
+                        <span style="color:#2c3e50;">{row['痛点分布']}</span></p>
+                    </div>
+                    """, unsafe_allow_html=True)
+        else:
+            st.success("✨ 所有维度表现良好，满意度均在 60% 以上！")
+
+        # --- 7. 用户原声词云分析 (精简版) ---
+        st.markdown("---")
+        st.markdown("### ☁️ 用户原声高频词组")
+    
+        all_text = " ".join(sub_df['s_text'].astype(str).tolist())
+
+        if len(all_text) > 20:
+            # 直接在此处配置词云，省去调用外部函数的开销
+            eng_stopwords = set(STOPWORDS)
+            custom_garbage = {'marker', 'markers', 'pen', 'pens', 'product', 'really', 'will', 'bought', 'set', 'get', 'much', 'even', 'color', 'paint', 'colors', 'work', 'good', 'great', 'love', 'used', 'using', 'actually', 'amazon', 'br'}
+            eng_stopwords.update(custom_garbage)
+
+            # 生成词云对象
+            wc = WordCloud(
+                width=1000, height=450,
+                background_color='white',
+                colormap='coolwarm', 
+                max_words=60,
+                random_state=79,
+                stopwords=eng_stopwords,
+                collocations=True
+            ).generate(all_text) # 直接 generate 比 process_text 更快更省事
+
+            st.image(wc.to_array(), use_container_width=True)
+            
+        else:
+            st.info("💡 样本量不足以生成词云。")
+                
+        # --- 8. 原声溯源 (Truth Laboratory) ---
+        st.write("")
+        with st.expander(f"🔍 深度探查：{sub_name} 的真实用户评价回溯"):
+            # 加上 key
+            target_dim = st.selectbox(
+                "选择想要探查的痛点维度:", 
+                analysis_res['维度'].tolist(), 
+                key=f"select_dim_{sub_name}"
+            )
+            
+            # ... 提取关键词部分 ...
+            neg_keywords = []
+            if target_dim in FEATURE_DIC: # 增加安全检查
+                for tag, keys in FEATURE_DIC[target_dim].items():
+                    if '负面' in tag or '不满' in tag:
+                        neg_keywords.extend(keys)
+            
+            if neg_keywords:
+                valid_keys = [re.escape(k) for k in neg_keywords if k.strip()]
+                if not valid_keys:
+                    st.info("该维度暂无有效的负面关键词。")
+                else:
+                    search_pattern = '|'.join(valid_keys)
+                    vocal_df = sub_df[
+                        (sub_df['Rating'] <= 3) & 
+                        (sub_df['s_text'].str.contains(search_pattern, na=False, flags=re.IGNORECASE))
+                    ][['Rating', 's_text']].drop_duplicates().head(10)
+                    
+                    if not vocal_df.empty: # (缩进: 20空格)
+                        st.warning(f"以下是用户在【{target_dim}】维度的真实痛点原声：")
+                        for i, (_, row) in enumerate(vocal_df.iterrows()):
+                            st.markdown(f"**[{row['Rating']}⭐]** {row['s_text']}")
+                            st.divider()
+                    else:
+                        st.info("该维度下暂未捕捉到高代表性的负面原声评价。")
+            else:
+                # 确保这个 else 与 if neg_keywords: 对齐
+                st.write("该维度暂无定义的负面关键词。")
+
         # --- 数据预处理 ---
         sub_df = extract_advanced_features(sub_df)
 
@@ -870,166 +1031,6 @@ if not df.empty:
                 top_motive = motive_stats.sort_values('opp_idx', ascending=False).iloc[0]
                 st.error(f"**核心机会点：** \n\n 针对 **{top_motive['feat_Motivation']}** 动机进入的用户，目前满意度仅为 **{round(top_motive['score'],1)}**，建议作为下代产品核心卖点优化。")
 
-        # --- 优化后的中间图表部分：柱状图 + 满意度折线 ---
-
-        # 1. 创建带双 Y 轴的图表
-        fig = make_subplots(specs=[[{"secondary_y": True}]])
-
-        # 2. 添加亮点柱状图
-        fig.add_trace(
-            go.Bar(name='亮点', x=analysis_res['维度'], y=analysis_res['亮点'], 
-                   marker_color='#2ecc71', text=analysis_res['亮点'], textposition='auto'),
-            secondary_y=False
-        )
-
-        # 3. 添加痛点柱状图
-        fig.add_trace(
-            go.Bar(name='痛点', x=analysis_res['维度'], y=analysis_res['痛点'], 
-                   marker_color='#e74c3c', text=analysis_res['痛点'], textposition='auto'),
-            secondary_y=False
-        )
-
-        # 4. 添加满意度折线图（显示具体分数）
-        fig.add_trace(
-            go.Scatter(
-                name='满意度 (%)', 
-                x=analysis_res['维度'], 
-                y=analysis_res['满意度'],
-                mode='lines+markers+text', # 线、点、文字同时显示
-                text=analysis_res['满意度'].apply(lambda x: f"{x}%"), # 格式化文字
-                textposition="top center", # 文字显示在点上方
-                line=dict(color='#3498db', width=3),
-                marker=dict(size=8)
-            ),
-            secondary_y=True # 使用右侧 Y 轴
-        )
-            
-        # 在 fig.add_trace(go.Scatter(...)) 之后添加
-        fig.add_trace(
-            go.Scatter(
-                name='维度评分 (1-5)', 
-                x=analysis_res['维度'], 
-                y=analysis_res['维度评分'],
-                mode='lines+markers',
-                line=dict(color='#f1c40f', width=2, dash='dot'),
-                marker=dict(symbol='star', size=10)
-            ),
-            secondary_y=True # 同样挂载在右轴，注意右轴范围建议设为 [0, 5] 或 [0, 100] 缩放
-        )
-        
-        # 修改右侧 Y 轴范围以兼容百分比和 5 分制（建议将评分乘以 20 映射到 100 分制）
-        fig.update_yaxes(title_text="满意度/评分映射 (%)", range=[0, 110], secondary_y=True)
-
-        # 5. 图表样式配置
-        fig.update_layout(
-            title=f"【{sub_name}】各维度情感倾向分布与满意度趋势",
-            barmode='group',
-            height=600,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-        )
-
-        # 设置左轴为提及次数，右轴为百分比
-        fig.update_yaxes(title_text="提及次数", secondary_y=False)
-        fig.update_yaxes(title_text="满意度分数 (%)", range=[0, 110], secondary_y=True)
-
-        st.plotly_chart(fig, use_container_width=True, key=f"chart_{sub_name}")
-
-        # 6. 底部数据下钻：找出所有“及格线以下”的隐患
-        st.markdown("🔍 **竞品弱点靶向追踪 (Opportunity Analysis)**")
-        
-        # 使用我们计算的“机会指数”进行排序，选出前 3 个最值得攻击的弱点
-        pain_df = analysis_res.sort_values("机会指数", ascending=False).head(3)
-
-        if not pain_df.empty:
-            cols = st.columns(3)
-            for idx, (_, row) in enumerate(pain_df.iterrows()):
-                with cols[idx]:
-                    # 颜色基于评分：评分越低越红
-                    color = "#c0392b" if row['维度评分'] < 3.5 else "#d35400"
-                    st.markdown(f"""
-                    <div style="padding:15px; border-radius:10px; border-left: 8px solid {color}; 
-                                 background-color: #fdfefe; border-top:1px solid #eee; border-right:1px solid #eee;
-                                 box-shadow: 2px 2px 8px rgba(0,0,0,0.05); min-height: 200px;">
-                        <div style="display:flex; justify-content:space-between;">
-                            <h4 style="margin:0;">{row['维度']}</h4>
-                            <span style="color:{color}; font-weight:bold;">得分: {row['维度评分']} ⭐</span>
-                        </div>
-                        <p style="color:gray; font-size:11px; margin-bottom:10px;">
-                           机会指数: {row['机会指数']} (数值越高越建议切入)
-                        </p>
-                        <p style="font-size:14px;"><b>核心投诉根因：</b><br/>
-                        <span style="color:#2c3e50;">{row['痛点分布']}</span></p>
-                    </div>
-                    """, unsafe_allow_html=True)
-        else:
-            st.success("✨ 所有维度表现良好，满意度均在 60% 以上！")
-
-        # --- 7. 用户原声词云分析 (精简版) ---
-        st.markdown("---")
-        st.markdown("### ☁️ 用户原声高频词组")
-    
-        all_text = " ".join(sub_df['s_text'].astype(str).tolist())
-
-        if len(all_text) > 20:
-            # 直接在此处配置词云，省去调用外部函数的开销
-            eng_stopwords = set(STOPWORDS)
-            custom_garbage = {'marker', 'markers', 'pen', 'pens', 'product', 'really', 'will', 'bought', 'set', 'get', 'much', 'even', 'color', 'paint', 'colors', 'work', 'good', 'great', 'love', 'used', 'using', 'actually', 'amazon', 'br'}
-            eng_stopwords.update(custom_garbage)
-
-            # 生成词云对象
-            wc = WordCloud(
-                width=1000, height=450,
-                background_color='white',
-                colormap='coolwarm', 
-                max_words=60,
-                random_state=79,
-                stopwords=eng_stopwords,
-                collocations=True
-            ).generate(all_text) # 直接 generate 比 process_text 更快更省事
-
-            st.image(wc.to_array(), use_container_width=True)
-            
-        else:
-            st.info("💡 样本量不足以生成词云。")
-                
-        # --- 8. 原声溯源 (Truth Laboratory) ---
-        st.write("")
-        with st.expander(f"🔍 深度探查：{sub_name} 的真实用户评价回溯"):
-            # 加上 key
-            target_dim = st.selectbox(
-                "选择想要探查的痛点维度:", 
-                analysis_res['维度'].tolist(), 
-                key=f"select_dim_{sub_name}"
-            )
-            
-            # ... 提取关键词部分 ...
-            neg_keywords = []
-            if target_dim in FEATURE_DIC: # 增加安全检查
-                for tag, keys in FEATURE_DIC[target_dim].items():
-                    if '负面' in tag or '不满' in tag:
-                        neg_keywords.extend(keys)
-            
-            if neg_keywords:
-                valid_keys = [re.escape(k) for k in neg_keywords if k.strip()]
-                if not valid_keys:
-                    st.info("该维度暂无有效的负面关键词。")
-                else:
-                    search_pattern = '|'.join(valid_keys)
-                    vocal_df = sub_df[
-                        (sub_df['Rating'] <= 3) & 
-                        (sub_df['s_text'].str.contains(search_pattern, na=False, flags=re.IGNORECASE))
-                    ][['Rating', 's_text']].drop_duplicates().head(10)
-                    
-                    if not vocal_df.empty: # (缩进: 20空格)
-                        st.warning(f"以下是用户在【{target_dim}】维度的真实痛点原声：")
-                        for i, (_, row) in enumerate(vocal_df.iterrows()):
-                            st.markdown(f"**[{row['Rating']}⭐]** {row['s_text']}")
-                            st.divider()
-                    else:
-                        st.info("该维度下暂未捕捉到高代表性的负面原声评价。")
-            else:
-                # 确保这个 else 与 if neg_keywords: 对齐
-                st.write("该维度暂无定义的负面关键词。")
         
 
 else:
