@@ -977,9 +977,7 @@ if not df.empty:
             
             def draw_sku_bubble_chart(data_source, title_label, suffix, local_dims):
                 # 1. 维度对齐逻辑：确保始终有 3 个有效维度
-                # 先过滤掉 None 和 "未提及"
                 valid_local = [d for d in local_dims if d and d != "未提及"]
-                # 用全局维度补齐到 3 个
                 final_dims = valid_local + [d for d in global_top_3 if d not in valid_local]
                 d_x, d_y, d_b = final_dims[0], final_dims[1], final_dims[2]
                 
@@ -1005,12 +1003,14 @@ if not df.empty:
                     sc_y, _ = get_metric(sku_df, d_y)
                     sc_b, _ = get_metric(sku_df, d_b)
                     
+                    # 只要有一维度有分就记录
                     if any(v is not None for v in [sc_x, sc_y, sc_b]):
                         plot_data.append({
                             'sku': str(sku),
                             'score_x': sc_x if sc_x is not None else 3.0,
                             'score_y': sc_y if sc_y is not None else 3.0,
-                            'score_bubble': sc_b if sc_b is not None else 2.5
+                            # 【修改点1】明确保存一个用于显示的原始数值，避免 None
+                            'score_bubble_val': sc_b if sc_b is not None else 3.0 
                         })
                 
                 res_df = pd.DataFrame(plot_data)
@@ -1020,21 +1020,26 @@ if not df.empty:
 
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(
-                    x=res_df['score_x'], y=res_df['score_y'],
+                    x=res_df['score_x'], 
+                    y=res_df['score_y'],
                     mode='markers+text',
                     text=res_df['sku'],
                     textposition="top center",
+                    # 【修改点2】将原始数值传入 customdata
+                    customdata=res_df['score_bubble_val'], 
                     marker=dict(
-                        size=res_df['score_bubble'] * 12,
+                        # 气泡大小依然用数值控制，但为了视觉效果乘倍率
+                        size=res_df['score_bubble_val'] * 12, 
                         color=res_df['score_x'] + res_df['score_y'],
                         colorscale='RdYlGn', showscale=True,
                         line=dict(width=1, color='DarkSlateGrey')
                     ),
+                    # 【修改点3】hovertemplate 读取 customdata 而不是计算 marker.size
                     hovertemplate = (
                         f"<b>%{{text}}</b><br>"
                         f"{d_x}: %{{x:.2f}}<br>"
                         f"{d_y}: %{{y:.2f}}<br>"
-                        f"{d_b}(气泡): %{{marker.size/12:.2f}}<extra></extra>"
+                        f"{d_b}(气泡): %{{customdata:.2f}}<extra></extra>"
                     )
                 ))
                 
@@ -1044,7 +1049,7 @@ if not df.empty:
                     yaxis=dict(title=f"{d_y} 评分 (1-5)", range=[0.8, 5.2]),
                     height=500
                 )
-                # --- 修复的关键：Key 必须包含 sub_name 确保全站唯一 ---
+                
                 st.plotly_chart(fig, width="stretch", key=f"bubble_{sub_name}_{suffix}")
 
             # --- Tabs 展现层 ---
