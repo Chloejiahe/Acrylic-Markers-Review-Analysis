@@ -526,7 +526,7 @@ def load_raw_data():
             
             # --- 修复 1: 自动寻找列名增加容错性 ---
             col_name = next((c for c in ['Content', 'Review Body', 'Body', 'content'] if c in df_temp.columns), df_temp.columns[0])
-            asin_col = next((c for c in ['ASIN', 'Parent ASIN', 'Product ID', 'asin', 'child_asin'] if c in df_temp.columns), None)
+            asin_col = next((c for c in ['ASIN', 'Parent ASIN', 'Product ID', 'Asin', 'child_asin'] if c in df_temp.columns), None)
             
             # --- 修复 2: 映射逻辑（放在拆分前，效率更高且不易出错） ---
             if asin_col:
@@ -741,7 +741,7 @@ if not df.empty:
             
             # --- 强制刷新缓存调试 (临时加入) ---
             # st.write(f"当前子集行数: {len(sub_df)}") 
-            # st.write("前5个ASIN:", sub_df['ASIN'].head().tolist() if 'ASIN' in sub_df.columns else "无ASIN列")
+            # st.write("前5个ASIN:", sub_df['Asin'].head().tolist() if 'Asin' in sub_df.columns else "无ASIN列")
             # st.write("规格分布:", sub_df['sku_spec'].value_counts())
             
             # 过滤掉 Unknown，只看映射成功的，方便排查
