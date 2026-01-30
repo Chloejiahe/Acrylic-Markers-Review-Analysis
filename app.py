@@ -974,7 +974,7 @@ if not df.empty:
             top_roles = sub_df[sub_df['feat_User_Role'] != "未提及"]['feat_User_Role'].value_counts().head(3).index.tolist()
             
             # --- 定义内部绘图函数，确保逻辑复用 ---
-            def draw_sku_bubble_chart(data_source, title_label):
+            def draw_sku_bubble_chart(data_source, title_label, suffix):
                 plot_data = []
                 all_skus = data_source['sku_spec'].unique()
                 
@@ -983,6 +983,7 @@ if not df.empty:
                     
                     def get_metric(target_df, dimension):
                         keywords = []
+                        # 确保 FEATURE_DIC 在此处作用域内可用
                         for keys in FEATURE_DIC.get(dimension, {}).values(): keywords.extend(keys)
                         pat = '|'.join([re.escape(k) for k in keywords if k.strip()])
                         matched = target_df[target_df['s_text'].str.contains(pat, na=False, flags=re.IGNORECASE)]
@@ -995,7 +996,7 @@ if not df.empty:
                     if any(v is not None for v in [sc_x, sc_y, sc_b]):
                         plot_data.append({
                             'sku': sku,
-                            'score_x': sc_x if sc_x else 2.5, # 默认中间值，避免图面留白
+                            'score_x': sc_x if sc_x else 2.5,
                             'score_y': sc_y if sc_y else 2.5,
                             'score_bubble': sc_b if sc_b else 1.0
                         })
@@ -1005,7 +1006,6 @@ if not df.empty:
                     st.warning(f"⚠️ {title_label} 下暂无足够维度数据")
                     return
 
-                # SKU 名称美化
                 def format_name(n):
                     parts = str(n).split('-')
                     core = "-".join(parts[:-1]) if len(parts) > 1 else n
@@ -1018,7 +1018,7 @@ if not df.empty:
                     text=res_df['sku'].apply(format_name),
                     textposition="top center",
                     marker=dict(
-                        size=res_df['score_bubble'] * 15, # 气泡缩放倍数
+                        size=res_df['score_bubble'] * 15,
                         color=res_df['score_x'] + res_df['score_y'],
                         colorscale='RdYlGn', showscale=True,
                         colorbar=dict(title="满意度指数"),
@@ -1033,10 +1033,10 @@ if not df.empty:
                     yaxis=dict(title=f"{dim_y} 评分", range=[0.5, 5.5], gridcolor='lightgray'),
                     height=600, plot_bgcolor='white'
                 )
-                # 辅助及格线
-                fig.add_hline(y=3.5, line_dash="dash", line_color="red", opacity=0.3)
-                fig.add_vline(x=3.5, line_dash="dash", line_color="red", opacity=0.3)
-                st.plotly_chart(fig, use_container_width=True, key=f"chart_{suffix}_{title_label}")
+                
+                # 关键修复 1: 唯一的 Key
+                # 关键修复 2: 解决弃用警告，用 width="stretch" 替代 use_container_width=True
+                st.plotly_chart(fig, width="stretch", key=f"bubble_chart_{suffix}")
 
             # 2. 创建交互式 Tabs
             tab_list = st.tabs(["📊 总体全量分析"] + [f"👤 人群：{r}" for r in top_roles])     
