@@ -1068,7 +1068,7 @@ if not df.empty:
                     role_specific_dims = sorted(dim_counts, key=dim_counts.get, reverse=True)[:3]
                     
                     st.caption(f"🎯 **{role}** 的核心关注维度：{', '.join(role_specific_dims) if role_specific_dims else '通用维度'}")
-                    draw_sku_bubble_chart(role_sub, role, f"role_{i}", role_specific_dims))
+                    draw_sku_bubble_chart(role_sub, role, f"role_{i}", role_specific_dims)
             
         
         # --- 板块 5: 动机与核心痛点深度关联分析 ---
