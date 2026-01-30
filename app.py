@@ -906,83 +906,95 @@ if not df.empty:
 
         # --- c3: 基于 Top 3 痛点集成的 SKU 竞争力矩阵 ---
         with c3:
-            st.markdown("#### 🚀 核心痛点集成表现矩阵 (Top 3 Pain-points Integrated)")
+            st.markdown("#### 🚀 核心痛点维度分解矩阵 (Pain-point Axis Breakdown)")
             
-            # 1. 自动提取前三个核心痛点维度
-            integrated_dims = pain_df['维度'].tolist()[:3] if not pain_df.empty else ["性价比", "流畅性", "笔头表现"]
-            st.caption(f"当前集成维度：{', '.join(integrated_dims)}")
+            # 1. 自动提取前三个核心痛点维度，分别映射到 X轴, Y轴, 气泡大小
+            dims = pain_df['维度'].tolist()[:3] if not pain_df.empty else ["性价比", "流畅性", "笔头表现"]
+            
+            # 补齐维度（防止不足3个）
+            while len(dims) < 3:
+                dims.append("其他")
+            
+            dim_x, dim_y, dim_size = dims[0], dims[1], dims[2]
+            st.caption(f"坐标轴解析：X轴={dim_x} | Y轴={dim_y} | 气泡大小={dim_size}反馈量")
 
-            # 2. 局部函数：计算 SKU 在特定痛点维度下的表现
-            def get_integrated_pain_stats(df, dimensions):
-                # 汇总所有痛点维度的关键词
-                all_keywords = []
-                for dim in dimensions:
-                    if dim in FEATURE_DIC:
-                        # 重点抓取负面/痛点相关的关键词
-                        for tag, keys in FEATURE_DIC[dim].items():
-                            if '负面' in tag or '不满' in tag or '痛点' in tag:
-                                all_keywords.extend(keys)
-                
-                if not all_keywords:
-                    return pd.DataFrame()
-                
-                pattern = '|'.join([re.escape(k) for k in set(all_keywords) if k.strip()])
-                # 筛选涉及核心痛点的评论行
-                target_mask = df['s_text'].str.contains(pattern, na=False, flags=re.IGNORECASE)
-                dim_df = df[target_mask].copy()
-                
-                if dim_df.empty:
-                    return pd.DataFrame()
+            # 2. 局部函数：计算每个 SKU 在各独立维度的具体评分
+            def get_axis_pain_stats(df, d_x, d_y, d_s):
+                sku_results = []
+                for sku in df['sku_spec'].unique():
+                    sku_df = df[df['sku_spec'] == sku]
+                    
+                    def get_dim_score(target_df, dimension):
+                        if dimension not in FEATURE_DIC: return 0, 0
+                        keywords = []
+                        for tag, keys in FEATURE_DIC[dimension].items():
+                            keywords.extend(keys)
+                        pat = '|'.join([re.escape(k) for k in keywords if k.strip()])
+                        matched = target_df[target_df['s_text'].str.contains(pat, na=False, flags=re.IGNORECASE)]
+                        if matched.empty: return 0, 0
+                        return matched['Rating'].mean(), len(matched)
 
-                # 按 SKU 分组统计这些痛点维度的“受灾”情况
-                stats = dim_df.groupby('sku_spec').agg(
-                    pain_score=('Rating', 'mean'),       # 在痛点评价中的平均分（越低说明被骂得越狠）
-                    pain_vocal=('s_text', 'count'),      # 痛点被提及的总声量（越高说明问题越普遍）
-                    pain_count=('Rating', lambda x: (x <= 3).sum()) # 差评绝对数量（气泡大小）
-                ).reset_index()
-                return stats
+                    score_x, vol_x = get_dim_score(sku_df, d_x)
+                    score_y, vol_y = get_dim_score(sku_df, d_y)
+                    score_s, vol_s = get_dim_score(sku_df, d_s)
+                    
+                    # 只有当 SKU 在至少两个维度有数据时才记录
+                    if vol_x > 0 or vol_y > 0:
+                        sku_results.append({
+                            'sku': sku,
+                            'score_x': score_x if vol_x > 0 else df['Rating'].mean(),
+                            'score_y': score_y if vol_y > 0 else df['Rating'].mean(),
+                            'impact_size': vol_s
+                        })
+                return pd.DataFrame(sku_results)
 
-            sku_pain_stats = get_integrated_pain_stats(sub_df, integrated_dims)
+            axis_stats = get_axis_pain_stats(sub_df, dim_x, dim_y, dim_size)
 
-            if not sku_pain_stats.empty:
-                # 3. 动态计算气泡缩放比例
-                max_impact = sku_pain_stats['pain_count'].max()
-                calc_sizeref = 2. * max_impact / (60.**2) if max_impact > 0 else 1
+            if not axis_stats.empty:
+                # 3. 动态计算气泡缩放
+                max_s = axis_stats['impact_size'].max()
+                calc_sizeref = 2. * max_s / (50.**2) if max_s > 0 else 1
                 
-                fig_integrated = go.Figure()
-                fig_integrated.add_trace(go.Scatter(
-                    x=sku_pain_stats['pain_score'],
-                    y=sku_pain_stats['pain_vocal'],
+                fig_axis = go.Figure()
+                fig_axis.add_trace(go.Scatter(
+                    x=axis_stats['score_x'],
+                    y=axis_stats['score_y'],
                     mode='markers+text',
-                    text=sku_pain_stats['sku_spec'].apply(lambda x: str(x).split('-')[0]), # 简化显示名称
+                    text=axis_stats['sku'].apply(lambda x: str(x).split('-')[0]),
                     textposition="top center",
                     marker=dict(
-                        size=sku_pain_stats['pain_count'],
+                        size=axis_stats['impact_size'],
                         sizemode='area',
                         sizeref=calc_sizeref,
-                        sizemin=10,
-                        color=sku_pain_stats['pain_score'],
-                        colorscale='RdYlGn', # 红(低分) -> 绿(高分)
+                        sizemin=12,
+                        color=axis_stats['score_x'] + axis_stats['score_y'], # 颜色反映前两项综合满意度
+                        colorscale='Viridis',
                         showscale=True,
-                        colorbar=dict(title="痛点得分", thickness=15)
+                        colorbar=dict(title="综合防御力", thickness=15)
                     ),
-                    hovertemplate="<b>规格: %{text}</b><br>核心痛点评分: %{x:.2f}<br>讨论热度: %{y}<br>累计投诉: %{marker.size}次<extra></extra>"
+                    hovertemplate=(
+                        "<b>规格: %{text}</b><br>" +
+                        f"{dim_x}评分: %{{x:.2f}}<br>" +
+                        f"{dim_y}评分: %{{y:.2f}}<br>" +
+                        f"{dim_size}投诉量: %{{marker.size}}次<extra></extra>"
+                    )
                 ))
                 
-                # 增加十字均值基准线
-                fig_integrated.add_vline(x=sku_pain_stats['pain_score'].mean(), line_dash="dot", line_color="gray", opacity=0.5)
-                fig_integrated.add_hline(y=sku_pain_stats['pain_vocal'].mean(), line_dash="dot", line_color="gray", opacity=0.5)
+                # 绘制象限中线（5分制的中值或均值）
+                fig_axis.add_vline(x=3.5, line_dash="dash", line_color="red", opacity=0.3)
+                fig_axis.add_hline(y=3.5, line_dash="dash", line_color="red", opacity=0.3)
 
-                fig_integrated.update_layout(
-                    xaxis=dict(title="痛点满意度 (越高越好)", range=[1, 5.5], gridcolor='white'),
-                    yaxis=dict(title="市场关注度 (涉及痛点的声量)", gridcolor='white'),
-                    height=500,
-                    margin=dict(l=20, r=20, t=40, b=20),
+                fig_axis.update_layout(
+                    title=f"竞品弱点分布图：{dim_x} vs {dim_y}",
+                    xaxis=dict(title=f"{dim_x} 满意度", range=[1, 5.2], gridcolor='white'),
+                    yaxis=dict(title=f"{dim_y} 满意度", range=[1, 5.2], gridcolor='white'),
+                    height=550,
+                    margin=dict(l=20, r=20, t=60, b=20),
                     plot_bgcolor='rgba(240,240,240,0.5)'
                 )
-                st.plotly_chart(fig_integrated, use_container_width=True)
+                st.plotly_chart(fig_axis, use_container_width=True)
             else:
-                st.info("💡 当前选中的核心痛点维度下暂无足够的 SKU 对比数据。")
+                st.info("💡 SKU 维度数据较稀疏，无法拆解坐标轴。")
 
         # --- c4: 人群 x 价格带 “错位”分析 (PMF) ---
         with c4:
