@@ -877,184 +877,144 @@ if not df.empty:
 
         st.markdown("### 🎯 深度市场深度解析 (Advanced Market Insight)")
         
-        c1, c2 = st.columns(2)
+        # --- 板块 1: 多维用户画像分布 (独占一行) ---
+        st.markdown("#### 👥 用户画像分布 (Demographic Analysis)")
+        
+        # 1.1 交互切换：选择分析维度
+        persona_dim = st.radio(
+            "选择画像分析维度:",
+            options=["用户身份", "性别分布", "年龄层次"],
+            horizontal=True,
+            key=f"persona_toggle_{sub_name}"
+        )
+        
+        # 维度映射逻辑
+        dim_map = {
+            "用户身份": "feat_User_Role",
+            "性别分布": "feat_Gender",
+            "年龄层次": "feat_Age_Group"
+        }
+        target_col = dim_map[persona_dim]
+        
+        # 1.2 数据清洗与统计
+        # 统一剔除“未提及”或空值
+        persona_df = sub_df[
+            (sub_df[target_col].notna()) & 
+            (sub_df[target_col] != "未提及") & 
+            (sub_df[target_col] != "Unknown")
+        ][target_col].value_counts().reset_index()
 
-        with c1:
-            # 1. 人群饼图
-            role_df = sub_df[sub_df['feat_User_Role'] != "未提及"]['feat_User_Role'].value_counts().reset_index()
-            fig_pie = go.Figure(data=[go.Pie(labels=role_df['feat_User_Role'], values=role_df['count'], hole=.4)])
-            fig_pie.update_layout(title="用户画像分布 (Who is buying?)", height=400)
+        if not persona_df.empty:
+            # 1.3 绘制环形图
+            fig_pie = go.Figure(data=[go.Pie(
+                labels=persona_df[target_col], 
+                values=persona_df['count'], 
+                hole=.45,
+                marker=dict(colors=['#636EFA', '#EF553B', '#00CC96', '#AB63FA', '#FFA15A']),
+                textinfo='percent+label'
+            )])
+            
+            fig_pie.update_layout(
+                title=f"核心访客：{persona_dim}分布",
+                height=450,
+                showlegend=True,
+                legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5),
+                margin=dict(t=40, b=80, l=20, r=20)
+            )
             st.plotly_chart(fig_pie, use_container_width=True)
-
-        with c2:
-            # 2. 场景热力图 (人群 vs 场景)
-            # 剔除未提及数据
-            heat_data = sub_df[(sub_df['feat_User_Role'] != "未提及") & (sub_df['feat_Usage'] != "未提及")]
-            if not heat_data.empty:
-                ct = pd.crosstab(heat_data['feat_User_Role'], heat_data['feat_Usage'])
-                fig_heat = go.Figure(data=go.Heatmap(
-                    z=ct.values, x=ct.columns, y=ct.index,
-                    colorscale='GnBu', texttemplate="%{z}", hoverinfo='z'
-                ))
-                fig_heat.update_layout(title="用户-场景关联热力图", height=400)
-                st.plotly_chart(fig_heat, use_container_width=True)
-            else:
-                st.info("样本量不足以生成热力图")
+            
+            # 补充一个简单的业务洞察说明
+            top_val = persona_df.iloc[0][target_col]
+            top_pct = (persona_df.iloc[0]['count'] / persona_df['count'].sum() * 100).round(1)
+            st.info(f"📊 **市场洞察：** 当前子类目中，**{top_val}** 是最主流的群体，占比高达 **{top_pct}%**。建议营销侧重点针对该群体进行视觉风格调整。")
+        else:
+            st.warning(f"🔍 暂无明确的 {persona_dim} 维度数据。请检查原始评论中是否包含相关标签。")
 
         st.markdown("---")
-        c3, c4 = st.columns(2)
 
-        # --- c3: 核心痛点靶向评分矩阵 (Triple-Dimension Performance) ---
-        with c3:
-            st.markdown("#### 🚀 核心痛点维度评分矩阵 (Pain-point Score Matrix)")
-            
-            # 1. 自动提取前三个核心痛点维度
-            dims = pain_df['维度'].tolist()[:3] if not pain_df.empty else ["性价比", "流畅性", "笔头表现"]
-            
-            # 补齐维度（防止数据不足3个）
-            while len(dims) < 3:
-                dims.append("其他")
-            
-            dim_x, dim_y, dim_bubble = dims[0], dims[1], dims[2]
-            st.caption(f"矩阵解析：X={dim_x}评分 | Y={dim_y}评分 | 气泡大小={dim_bubble}评分")
+        # --- 板块 2: 场景热力图 (独占一行) ---
+        st.markdown("#### 🖼️ 场景热力图 (User-Usage Correlation)")
+        heat_data = sub_df[(sub_df['feat_User_Role'] != "未提及") & (sub_df['feat_Usage'] != "未提及")]
+        if not heat_data.empty:
+            ct = pd.crosstab(heat_data['feat_User_Role'], heat_data['feat_Usage'])
+            fig_heat = go.Figure(data=go.Heatmap(
+                z=ct.values, x=ct.columns, y=ct.index,
+                colorscale='GnBu', texttemplate="%{z}", hoverinfo='z'
+            ))
+            fig_heat.update_layout(title="用户-场景关联热力图", height=400)
+            st.plotly_chart(fig_heat, use_container_width=True)
+        else:
+            st.info("样本量不足以生成热力图")
+        st.markdown("---")
 
-            # 2. 局部函数：计算每个 SKU 在各独立维度的具体评分
-            def get_triple_pain_stats(df, d_x, d_y, d_b):
-                sku_results = []
-                # 获取该子类下所有 SKU
-                all_skus = df['sku_spec'].unique()
+        # --- 板块 3: 核心痛点靶向评分矩阵 (独占一行) ---
+        st.markdown("#### 🚀 核心痛点维度评分矩阵 (Pain-point Score Matrix)")
+        dims = pain_df['维度'].tolist()[:3] if not pain_df.empty else ["性价比", "流畅性", "笔头表现"]
+        while len(dims) < 3: dims.append("其他")
+        dim_x, dim_y, dim_bubble = dims[0], dims[1], dims[2]
+        st.caption(f"矩阵解析：X={dim_x}评分 | Y={dim_y}评分 | 气泡大小={dim_bubble}评分")
+
+        def get_triple_pain_stats(df, d_x, d_y, d_b):
+            sku_results = []
+            all_skus = df['sku_spec'].unique()
+            for sku in all_skus:
+                sku_df = df[df['sku_spec'] == sku]
+                def get_dim_metrics(target_df, dimension):
+                    if dimension not in FEATURE_DIC: return 0, 0
+                    keywords = []
+                    for tag, keys in FEATURE_DIC[dimension].items(): keywords.extend(keys)
+                    pat = '|'.join([re.escape(k) for k in keywords if k.strip()])
+                    matched = target_df[target_df['s_text'].str.contains(pat, na=False, flags=re.IGNORECASE)]
+                    if matched.empty: return None, 0
+                    return matched['Rating'].mean(), len(matched)
                 
-                for sku in all_skus:
-                    sku_df = df[df['sku_spec'] == sku]
-                    
-                    def get_dim_metrics(target_df, dimension):
-                        if dimension not in FEATURE_DIC: return 0, 0
-                        # 汇总该维度的所有关键词
-                        keywords = []
-                        for tag, keys in FEATURE_DIC[dimension].items():
-                            keywords.extend(keys)
-                        pat = '|'.join([re.escape(k) for k in keywords if k.strip()])
-                        
-                        matched = target_df[target_df['s_text'].str.contains(pat, na=False, flags=re.IGNORECASE)]
-                        if matched.empty:
-                            return None, 0
-                        return matched['Rating'].mean(), len(matched)
+                score_x, vol_x = get_dim_metrics(sku_df, d_x)
+                score_y, vol_y = get_dim_metrics(sku_df, d_y)
+                score_b, vol_b = get_dim_metrics(sku_df, d_b)
+                if vol_x == 0 and vol_y == 0 and vol_b == 0: continue
+                sku_results.append({
+                    'sku': sku,
+                    'score_x': score_x if score_x is not None else 0,
+                    'score_y': score_y if score_y is not None else 0,
+                    'score_bubble': score_b if score_b is not None else 0
+                })
+            return pd.DataFrame(sku_results)
 
-                    score_x, vol_x = get_dim_metrics(sku_df, d_x)
-                    score_y, vol_y = get_dim_metrics(sku_df, d_y)
-                    score_b, vol_b = get_dim_metrics(sku_df, d_b)
-                    
-                    # 过滤掉在该三大维度完全没有提及的 SKU
-                    if vol_x == 0 and vol_y == 0 and vol_b == 0:
-                        continue
-                        
-                    sku_results.append({
-                        'sku': sku,
-                        'score_x': score_x if score_x is not None else 0,
-                        'score_y': score_y if score_y is not None else 0,
-                        'score_bubble': score_b if score_b is not None else 0,
-                        'total_vocal': vol_x + vol_y + vol_b
-                    })
-                return pd.DataFrame(sku_results)
+        triple_stats = get_triple_pain_stats(sub_df, dim_x, dim_y, dim_bubble)
+        if not triple_stats.empty:
+            fig_triple = go.Figure()
+            fig_triple.add_trace(go.Scatter(
+                x=triple_stats['score_x'], y=triple_stats['score_y'],
+                mode='markers+text',
+                text=triple_stats['sku'].apply(lambda x: str(x).split('-')[0]),
+                textposition="top center",
+                marker=dict(
+                    size=triple_stats['score_bubble'] * 12 + 5,
+                    color=triple_stats['score_x'] + triple_stats['score_y'] + triple_stats['score_bubble'],
+                    colorscale='RdYlGn', showscale=True,
+                    colorbar=dict(title="综合防御力"),
+                    line=dict(width=1, color='DarkSlateGrey')
+                ),
+                hovertemplate=f"<b>规格: %{{text}}</b><br>{dim_x}: %{{x:.2f}}<br>{dim_y}: %{{y:.2f}}<br>{dim_bubble}: %{{marker.size/12:.2f}}"
+            ))
+            fig_triple.update_layout(height=550, plot_bgcolor='rgba(240,240,240,0.5)')
+            st.plotly_chart(fig_triple, use_container_width=True)
+        st.markdown("---")
 
-            triple_stats = get_triple_pain_stats(sub_df, dim_x, dim_y, dim_bubble)
-
-            if not triple_stats.empty:
-                # 3. 绘图：评分越高气泡越大
-                fig_triple = go.Figure()
-                
-                # 为了让评分 1-5 的差异在视觉上更明显，对气泡大小进行指数增强或缩放
-                # 评分越接近 5，气泡越大，代表防御力越强
-                fig_triple.add_trace(go.Scatter(
-                    x=triple_stats['score_x'],
-                    y=triple_stats['score_y'],
-                    mode='markers+text',
-                    text=triple_stats['sku'].apply(lambda x: str(x).split('-')[0]),
-                    textposition="top center",
-                    marker=dict(
-                        # 气泡大小映射第三维度评分，增加 15 基础大小确保最小评分也可见
-                        size=triple_stats['score_bubble'] * 12 + 5, 
-                        color=triple_stats['score_x'] + triple_stats['score_y'] + triple_stats['score_bubble'],
-                        colorscale='RdYlGn', # 整体防御力：红(弱) -> 绿(强)
-                        showscale=True,
-                        colorbar=dict(title="综合防御力", thickness=15),
-                        line=dict(width=1, color='DarkSlateGrey')
-                    ),
-                    hovertemplate=(
-                        "<b>规格: %{text}</b><br>" +
-                        f"{dim_x}评分: %{{x:.2f}}<br>" +
-                        f"{dim_y}评分: %{{y:.2f}}<br>" +
-                        f"{dim_bubble}评分: %{{marker.size/12:.2f}}<extra></extra>"
-                    )
-                ))
-                
-                # 设置 3.5 分为“及格线”十字准星
-                fig_triple.add_vline(x=3.5, line_dash="dash", line_color="orange", opacity=0.4)
-                fig_triple.add_hline(y=3.5, line_dash="dash", line_color="orange", opacity=0.4)
-
-                fig_triple.update_layout(
-                    title=f"SKU 靶向防御力矩阵<br><span style='font-size:12px;color:gray;'>右上角+大尺寸气泡 = 三大痛点完美防御标杆</span>",
-                    xaxis=dict(title=f"{dim_x} 满意度", range=[0.5, 5.5], gridcolor='white'),
-                    yaxis=dict(title=f"{dim_y} 满意度", range=[0.5, 5.5], gridcolor='white'),
-                    height=550,
-                    margin=dict(l=20, r=20, t=60, b=20),
-                    plot_bgcolor='rgba(240,240,240,0.5)'
-                )
-                st.plotly_chart(fig_triple, use_container_width=True)
-            else:
-                st.info("💡 当前 SKU 样本在选定维度的评价数据不足，无法构建评分矩阵。")
-
-        # --- c4: 人群 x 价格带 “错位”分析 (PMF) ---
-        with c4:
-            st.markdown("#### 🔬 人群 x 价格带 满意度偏离 (PMF)")
-            
-            # 这里的目的是看：专业人群是否在低价产品里留下了高分（真香定律）
-            role_col = 'feat_用户身份' if 'feat_用户身份' in sub_df.columns else 'feat_User_Role'
-            
-            # 过滤掉未提及人群的数据
-            pmf_base = sub_df[sub_df[role_col] != "未提及"].copy()
-            
-            if not pmf_base.empty:
-                # 从 sku_spec 提取价格标签 (假设格式最后一段是 LowPrice/HighPrice)
-                pmf_base['price_segment'] = pmf_base['sku_spec'].apply(
-                    lambda x: x.split('-')[-1] if '-' in str(x) else 'Other'
-                )
-                
-                # 创建交叉透视表：不同身份在不同价格带的平均星级
-                pmf_pivot = pmf_base.pivot_table(
-                    index=role_col, 
-                    columns='price_segment', 
-                    values='Rating', 
-                    aggfunc='mean'
-                ).fillna(0)
-                
-                fig_pmf = go.Figure()
-                # 为每个价格带（LowPrice, HighPrice 等）画一组柱状图
-                for segment in pmf_pivot.columns:
-                    fig_pmf.add_trace(go.Bar(
-                        name=segment, 
-                        x=pmf_pivot.index, 
-                        y=pmf_pivot[segment],
-                        text=pmf_pivot[segment].apply(lambda x: f"{x:.1f}" if x > 0 else ""),
-                        textposition='outside'
-                    ))
-                
-                # 添加一条全场平均星级水平线作为参照
-                fig_pmf.add_hline(y=sub_df['Rating'].mean(), line_dash="dash", 
-                                  line_color="gray", annotation_text="全场均分")
-                
-                fig_pmf.update_layout(
-                    title="不同人群对不同规格的评价 (寻找错位好评)",
-                    barmode='group',
-                    yaxis_title="平均星级评分",
-                    yaxis_range=[0, 5.5],
-                    height=500,
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-                )
-                st.plotly_chart(fig_pmf, use_container_width=True)
-            else:
-                st.info("标签样本量不足，无法进行 PMF 错位分析")
-
+        # --- 板块 4: PMF 错位分析 (独占一行) ---
+        st.markdown("#### 🔬 人群 x 价格带 满意度偏离 (PMF)")
+        role_col = 'feat_User_Role'
+        pmf_base = sub_df[sub_df[role_col] != "未提及"].copy()
+        if not pmf_base.empty:
+            pmf_base['price_segment'] = pmf_base['sku_spec'].apply(lambda x: x.split('-')[-1] if '-' in str(x) else 'Other')
+            pmf_pivot = pmf_base.pivot_table(index=role_col, columns='price_segment', values='Rating', aggfunc='mean').fillna(0)
+            fig_pmf = go.Figure()
+            for segment in pmf_pivot.columns:
+                fig_pmf.add_trace(go.Bar(name=segment, x=pmf_pivot.index, y=pmf_pivot[segment]))
+            fig_pmf.update_layout(barmode='group', height=500)
+            st.plotly_chart(fig_pmf, use_container_width=True)
+        st.markdown("---")
+        
         # 5. 动机与机会指数关联分析
         st.write("")
         st.markdown("#### 💡 购买动机与改进优先序 (Motivation & Opportunity)")
