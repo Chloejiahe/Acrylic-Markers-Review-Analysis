@@ -963,163 +963,83 @@ if not df.empty:
         st.markdown("---")
 
         # --- 板块 3: 核心痛点靶向评分矩阵 (独占一行) ---
-        st.markdown("#### 🚀 核心痛点维度评分矩阵 (Pain-point Score Matrix)")
+# --- 板块 3: 核心用户群体验分布矩阵 ---
+        st.markdown("#### 🎯 核心用户群体验评价矩阵 (User Persona Experience Matrix)")
+
         if not pain_df.empty and len(pain_df) >= 3:
-            dims = pain_df['维度'].tolist()[:3]
-            dim_x, dim_y, dim_bubble = dims[0], dims[1], dims[2]
-            st.caption(f"矩阵解析：X={dim_x}评分 | Y={dim_y}评分 | 气泡大小={dim_bubble}评分")
-
-            def get_triple_pain_stats(df, d_x, d_y, d_b):
-                sku_results = []
-                all_skus = df['sku_spec'].unique()
-                for sku in all_skus:
-                    sku_df = df[df['sku_spec'] == sku]
-                    def get_dim_metrics(target_df, dimension):
-                        if dimension not in FEATURE_DIC: return 0, 0
-                        keywords = []
-                        for tag, keys in FEATURE_DIC[dimension].items(): keywords.extend(keys)
-                        pat = '|'.join([re.escape(k) for k in keywords if k.strip()])
-                        matched = target_df[target_df['s_text'].str.contains(pat, na=False, flags=re.IGNORECASE)]
-                        if matched.empty: return None, 0
-                        return matched['Rating'].mean(), len(matched)
-                    
-                    score_x, _ = get_dim_metrics(sku_df, d_x)
-                    score_y, _ = get_dim_metrics(sku_df, d_y)
-                    score_b, vol_b = get_dim_metrics(sku_df, d_b)
-                    
-                    # 只要这三个维度中有任何一个有评分，就纳入计算
-                    if score_x is not None or score_y is not None or score_b is not None:
-                        sku_results.append({
-                            'sku': sku,
-                            'score_x': score_x if score_x is not None else 0,
-                            'score_y': score_y if score_y is not None else 0,
-                            'score_bubble': score_b if score_b is not None else 0
-                        })
-                return pd.DataFrame(sku_results)
-
-            triple_stats = get_triple_pain_stats(sub_df, dim_x, dim_y, dim_bubble)
-
-            if not triple_stats.empty:
-                # 3. 绘图部分 (包含之前为你优化的换行逻辑)
-                fig_triple = go.Figure()
-                
-                # 优化后的名称处理：保留规格，去掉末尾价格，加入换行
-                def format_sku_name(name):
-                    parts = str(name).split('-')
-                    # 如果有横杠，保留除最后一个（价格带）以外的所有部分，并换行
-                    core = "-".join(parts[:-1]) if len(parts) > 1 else name
-                    return core.replace("-", "<br>")
-
-                fig_triple.add_trace(go.Scatter(
-                    x=triple_stats['score_x'],
-                    y=triple_stats['score_y'],
-                    mode='markers+text',
-                    text=triple_stats['sku'].apply(format_sku_name),
-                    textposition="top center",
-                    marker=dict(
-                        size=triple_stats['score_bubble'] * 12 + 5, # 评分越高气泡越大
-                        color=triple_stats['score_x'] + triple_stats['score_y'] + triple_stats['score_bubble'],
-                        colorscale='RdYlGn', 
-                        showscale=True,
-                        colorbar=dict(title="综合评分"),
-                        line=dict(width=1, color='DarkSlateGrey')
-                    ),
-                    customdata=triple_stats['sku'],
-                    hovertemplate=f"<b>规格: %{{customdata}}</b><br>{dim_x}: %{{x:.2f}}<br>{dim_y}: %{{y:.2f}}<br>{dim_bubble}: %{{marker.size/12:.2f}}<extra></extra>"
-                ))
-                
-                fig_triple.update_layout(
-                    height=600,
-                    xaxis=dict(title=f"{dim_x} 满意度", range=[0.5, 5.5], gridcolor='lightgray'),
-                    yaxis=dict(title=f"{dim_y} 满意度", range=[0.5, 5.5], gridcolor='lightgray'),
-                    plot_bgcolor='white'
-                )
-                st.plotly_chart(fig_triple, use_container_width=True)
-            else:
-                st.warning("⚠️ 选定的前三大痛点在当前 SKU 中缺少具体的评分数据。")
-        else:
-            st.info("💡 核心痛点不足 3 个，无法构建三维评价矩阵。")
-            
-        # --- 板块 4: 深度 PMF 分析 (人群 x 维度 x 价格带) ---
-        st.markdown(f"#### 🔬 {persona_dim} x 核心维度 匹配度分析 (PMF)")
-        
-        # 4.1 准备数据：联动上面选择的 persona_dim (target_col)
-        pmf_df = sub_df[(sub_df[target_col].notna()) & (sub_df[target_col] != "未提及")].copy()
-        
-        if not pmf_df.empty and not pain_df.empty:
-            # 提取价格带
-            pmf_df['price_segment'] = pmf_df['sku_spec'].apply(lambda x: x.split('-')[-1] if '-' in str(x) else 'Other')
-            
-            # 获取前三个核心分析维度 (来自你之前的 analysis_res)
+            # 1. 获取 Top 3 痛点维度和 Top 3 用户身份
             top_dims = pain_df['维度'].tolist()[:3]
+            top_roles = sub_df[sub_df['feat_User_Role'] != "未提及"]['feat_User_Role'].value_counts().head(3).index.tolist()
             
-            # 增加一个交互：让用户选择想看哪个具体维度的匹配情况
-            selected_pmf_dim = st.selectbox(
-                "选择要交叉分析的体验维度:",
-                options=top_dims,
-                key=f"pmf_dim_selector_{sub_name}"
-            )
-
-            # 4.2 计算该维度在不同人群和价格带下的平均分
-            # 注意：这里需要根据 FEATURE_DIC 过滤出提到该维度的评论再算分
-            def get_dim_score(group_df, dimension):
-                if dimension not in FEATURE_DIC: return None
-                keywords = []
-                for keys in FEATURE_DIC[dimension].values(): keywords.extend(keys)
-                pat = '|'.join([re.escape(k) for k in keywords if k.strip()])
-                matched = group_df[group_df['s_text'].str.contains(pat, na=False, flags=re.IGNORECASE)]
-                return matched['Rating'].mean() if not matched.empty else None
-
-            # 构建透视表数据
-            pmf_results = []
-            for (role, price), group in pmf_df.groupby([target_col, 'price_segment']):
-                score = get_dim_score(group, selected_pmf_dim)
-                if score:
-                    pmf_results.append({
-                        '人群': role,
-                        '价格带': price,
-                        '维度评分': round(score, 2)
-                    })
-            
-            plot_df = pd.DataFrame(pmf_results)
-
-            if not plot_df.empty:
-                # 4.3 绘制更具表达力的图表：分面柱状图 (Facetted Bar)
-                import plotly.express as px
-                
-                fig_pmf = px.bar(
-                    plot_df, 
-                    x='人群', 
-                    y='维度评分', 
-                    color='价格带',
-                    barmode='group',
-                    text='维度评分',
-                    color_discrete_sequence=px.colors.qualitative.Pastel,
-                    title=f"不同人群在各价格带对【{selected_pmf_dim}】的真实评价"
-                )
-                
-                # 增加一条基准线（及格线 3.5）
-                fig_pmf.add_hline(y=3.5, line_dash="dot", line_color="red", annotation_text="及格线")
-                
-                fig_pmf.update_layout(
-                    height=500,
-                    yaxis=dict(title="维度满意度评分 (1-5)", range=[1, 5.5]),
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-                )
-                st.plotly_chart(fig_pmf, use_container_width=True)
-                
-                # 4.4 自动生成 PMF 偏离诊断
-                low_points = plot_df[plot_df['维度评分'] < 3.5]
-                if not low_points.empty:
-                    worst = low_points.sort_values('维度评分').iloc[0]
-                    st.error(f"⚠️ **PMF 失效预警：** **{worst['人群']}** 对 **{worst['价格带']}** 产品的 **{selected_pmf_dim}** 极度不满 ({worst['维度评分']}分)。这说明该定价下的产品性能未达到该人群的心理预期。")
-                else:
-                    st.success(f"✅ **PMF 匹配良好：** 各个人群对 **{selected_pmf_dim}** 的评分均在及格线以上。")
-
+            if not top_roles:
+                st.info("💡 暂无明确的用户身份数据，无法生成深度评价矩阵。")
             else:
-                st.info(f"🔍 样本中提及 {selected_pmf_dim} 的评论不足，无法生成交叉分布图。")
-        
-        st.markdown("---")
+                # 2. 数据透视逻辑：计算 SKU x 角色 x 维度的平均分
+                matrix_data = []
+                all_skus = sub_df['sku_spec'].unique()
+
+                for role in top_roles:
+                    role_df = sub_df[sub_df['feat_User_Role'] == role]
+                    for sku in all_skus:
+                        sku_df = role_df[role_df['sku_spec'] == sku]
+                        if sku_df.empty: continue
+                        
+                        row = {'SKU': sku, 'User_Role': role}
+                        has_data = False
+                        
+                        for dim in top_dims:
+                            # 复用之前的维度关键词匹配评分逻辑
+                            keywords = []
+                            for keys in FEATURE_DIC.get(dim, {}).values(): keywords.extend(keys)
+                            pat = '|'.join([re.escape(k) for k in keywords if k.strip()])
+                            matched = sku_df[sku_df['s_text'].str.contains(pat, na=False, flags=re.IGNORECASE)]
+                            
+                            score = matched['Rating'].mean() if not matched.empty else None
+                            row[dim] = score
+                            if score is not None: has_data = True
+                        
+                        if has_data:
+                            matrix_data.append(row)
+
+                df_matrix = pd.DataFrame(matrix_data)
+
+                if not df_matrix.empty:
+                    # 3. 使用 Plotly Express 绘制分面热力图
+                    # 为了美观，我们将 SKU 名字简化处理
+                    df_matrix['SKU_Short'] = df_matrix['SKU'].apply(lambda x: "-".join(str(x).split('-')[:-1]) if '-' in str(x) else x)
+                    
+                    # 转换数据格式以适配热力图 (SKU, 维度, 分数, 角色)
+                    df_melted = df_matrix.melt(id_vars=['SKU_Short', 'User_Role'], value_vars=top_dims, 
+                                             var_name='Dimension', value_name='Score')
+
+                    import plotly.express as px
+                    fig_matrix = px.density_heatmap(
+                        df_melted, 
+                        x="Dimension", 
+                        y="SKU_Short", 
+                        z="Score",
+                        facet_col="User_Role",
+                        color_continuous_scale="RdYlGn", # 红黄绿配色
+                        range_color=[1, 5],
+                        text_auto=".1f",
+                        title="Top 3 人群在不同 SKU 上的维度体验分布 (1-5分)",
+                        labels={'Score': '满意度评分', 'SKU_Short': '产品规格', 'Dimension': '评价维度'},
+                        height=500
+                    )
+
+                    fig_matrix.update_layout(
+                        margin=dict(t=80, b=40, l=40, r=40),
+                        coloraxis_colorbar=dict(title="评分")
+                    )
+                    st.plotly_chart(fig_matrix, use_container_width=True)
+                    
+                    # 4. 自动生成一个深度的差异化洞察
+                    st.info("🔍 **体验差异化诊断：** 观察上方矩阵，如果同一个 SKU 在不同身份下颜色差异巨大，说明该产品存在明显的‘人群适配性’问题。")
+                else:
+                    st.warning("⚠️ 样本量太少，无法在 SKU-身份-维度 三个层面上聚合出有效分数。")
+        else:
+            st.info("💡 核心痛点不足 3 个，无法构建对比矩阵。")
+            
         
 # --- 板块 5: 动机与核心痛点深度关联分析 ---
         st.markdown("#### 💡 购买动机与改进优先序 (Motivation & Opportunity)")
